@@ -39,10 +39,28 @@ server_excluded_roles = {}
 last_aggregate_dates = {}
 role_streaks = {}
 
-# Database connection - 상대 경로에서 절대 경로로 변경
+# SQLite datetime 어댑터 추가
+import sqlite3
+from datetime import datetime
+
+# 커스텀 datetime 어댑터 함수
+def adapt_datetime(dt):
+    return dt.isoformat()
+
+def convert_datetime(s):
+    try:
+        return datetime.fromisoformat(s.decode())
+    except:
+        return datetime.fromisoformat(s)
+
+# 어댑터 등록 (Python 3.12/3.13 호환성)
+sqlite3.register_adapter(datetime, adapt_datetime)
+sqlite3.register_converter("DATETIME", convert_datetime)
+
+# Database connection - 어댑터 설정 포함
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'bot_data.db')
 print(f"데이터베이스 경로: {DB_PATH}")
-conn = sqlite3.connect(DB_PATH)
+conn = sqlite3.connect(DB_PATH, detect_types=sqlite3.PARSE_DECLTYPES)
 c = conn.cursor()
 
 # Create tables if they don't exist
@@ -345,7 +363,7 @@ async def on_message(message):
 
     # 메시지 저장
     c.execute("INSERT INTO messages (guild_id, user_id, message_id, timestamp) VALUES (?, ?, ?, ?)",
-              (guild_id, user_id, message.id, message.created_at))
+              (guild_id, user_id, message.id, message.created_at.isoformat()))
     conn.commit()
 
 # 봇 실행 (환경 변수에서 토큰 가져오기)

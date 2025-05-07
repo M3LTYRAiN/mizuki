@@ -17,5 +17,9 @@ ENV PYTHONDEVMODE=1
 # 경고 표시 억제를 위한 환경 변수 설정 (경고 필터링 추가)
 ENV PYTHONWARNINGS="ignore::DeprecationWarning:disnake.http"
 
+# 로케일 설정 추가
+ENV LANG C.UTF-8
+ENV LC_ALL C.UTF-8
+
 # 봇 실행
 CMD ["python", "bot.py"]

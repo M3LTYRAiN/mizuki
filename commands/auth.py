@@ -163,16 +163,16 @@ async def before_command(inter):
                             )
                         ]
                     )
-                    # 명령어 실행 취소
-                    raise commands.CommandInvokeError("서버가 인증되지 않았습니다.")
+                    # 명령어 실행 취소 - 메시지 수정
+                    raise commands.CommandInvokeError("서버가_인증되지_않았습니다") # 공백 제거
                 else:
                     # 일반 사용자는 관리자에게 문의하도록 안내
                     await inter.response.send_message(
                         "⚠️ 이 서버는 아직 인증되지 않은 것이다! 서버 관리자에게 문의하는 것이다!",
                         ephemeral=True
                     )
-                    # 명령어 실행 취소
-                    raise commands.CommandInvokeError("서버가 인증되지 않았습니다.")
+                    # 명령어 실행 취소 - 메시지 수정
+                    raise commands.CommandInvokeError("서버가_인증되지_않았습니다") # 공백 제거
         except disnake.errors.HTTPException:
             # 이미 응답된 경우 추가 처리하지 않음
             pass
