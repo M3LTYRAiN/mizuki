@@ -8,6 +8,9 @@ COPY requirements.txt .
 # 의존성 설치
 RUN pip install --no-cache-dir -r requirements.txt
 
+# MongoDB 관련 패키지 설치
+RUN pip install --no-cache-dir pymongo dnspython
+
 # 프로젝트 파일 복사
 COPY . .
 
