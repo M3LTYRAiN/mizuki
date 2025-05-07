@@ -32,7 +32,6 @@ server_chat_counts = {}
 server_excluded_roles = {}
 last_aggregate_dates = {}
 role_streaks = {}
-level_roles = {}  # 추가: 레벨별 역할을 저장할 변수
 
 # Database connection - 상대 경로에서 절대 경로로 변경
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'bot_data.db')
@@ -78,24 +77,9 @@ c.execute('''CREATE TABLE IF NOT EXISTS role_streaks (
                 PRIMARY KEY (guild_id, user_id)
             )''')
 
-# 테이블 생성 부분에 level_roles 테이블 추가
-c.execute('''CREATE TABLE IF NOT EXISTS level_roles (
-                guild_id INTEGER,
-                level INTEGER,
-                role_id INTEGER,
-                PRIMARY KEY (guild_id, level)
-            )''')
+# 테이블 생성 부분에 level_roles 테이블 삭제
 
 # 테이블 생성 부분에 user_card_settings 테이블 추가
-c.execute('''CREATE TABLE IF NOT EXISTS user_card_settings (
-                guild_id INTEGER,
-                user_id INTEGER,
-                bg_color_top TEXT DEFAULT '#9BBAFF',
-                bg_color_bottom TEXT DEFAULT '#AAB5F5',
-                card_style TEXT DEFAULT 'default',
-                last_updated DATETIME,
-                PRIMARY KEY (guild_id, user_id)
-            )''')
 
 # 테이블 생성 부분에 인증 관련 테이블 추가
 c.execute('''CREATE TABLE IF NOT EXISTS auth_codes (
@@ -240,19 +224,6 @@ def load_role_streaks():
     print(f"Loaded {len(rows)} role streaks:", streak_data)  # 디버깅 메시지 개선
     return streak_data
 
-# 역할-레벨 데이터 로드 함수 추가
-def load_level_roles():
-    global level_roles
-    c.execute("SELECT guild_id, level, role_id FROM level_roles")
-    rows = c.fetchall()
-    for row in rows:
-        guild_id, level, role_id = row
-        if guild_id not in level_roles:
-            level_roles[guild_id] = {}
-        level_roles[guild_id][level] = role_id
-    print(f"Level roles loaded: {level_roles}")
-
-# 디버그 정보 추가 - 사용자 카드 설정 확인
 @bot.event
 async def on_ready():
     global role_streaks
@@ -270,18 +241,6 @@ async def on_ready():
         load_excluded_role_data()
         load_chat_counts()
         role_streaks = load_role_streaks()
-        load_level_roles()  # 레벨 역할 로드
-        
-        # 데이터베이스에 카드 설정 테이블이 있는지 확인
-        c.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='user_card_settings'")
-        has_table = c.fetchone()[0] > 0
-        print(f"카드 설정 테이블 존재 여부: {has_table}")
-        
-        # 샘플 카드 설정 확인 (디버깅용)
-        if has_table:
-            c.execute("SELECT COUNT(*) FROM user_card_settings")
-            count = c.fetchone()[0]
-            print(f"저장된 카드 설정 수: {count}")
         
         print(f"✅ 봇이 준비되었습니다! (핑: {round(bot.latency * 1000)}ms)")
         
@@ -378,89 +337,10 @@ async def on_message(message):
     server_chat_counts[guild_id][user_id] += 1
     save_chat_counts()  # 데이터베이스에 채팅 카운트 저장
 
-    # 레벨 업데이트 (새로 추가된 부분)
-    try:
-        from commands.level import update_user_level, get_user_level_info
-        is_level_up = update_user_level(guild_id, user_id)
-        
-        # 레벨업 알림 (선택사항)
-        if is_level_up:
-            level_info = get_user_level_info(guild_id, user_id)
-            await message.channel.send(
-                f" {message.author.mention}님이 레벨 {level_info['level']}이 된 것이다!"
-            )
-    except Exception as e:
-        print(f"Error updating level: {e}")
-
     # 메시지 저장
     c.execute("INSERT INTO messages (guild_id, user_id, message_id, timestamp) VALUES (?, ?, ?, ?)",
               (guild_id, user_id, message.id, message.created_at))
     conn.commit()
-
-# 역할-레벨 데이터 저장을 위한 함수 추가
-def save_level_role(guild_id, level, role_id):
-    """레벨별 역할 설정을 데이터베이스에 저장하는 것이다."""
-    c.execute("""
-        INSERT OR REPLACE INTO level_roles 
-        (guild_id, level, role_id) 
-        VALUES (?, ?, ?)
-    """, (guild_id, level, role_id))
-    conn.commit()
-    
-    # 메모리 캐시 업데이트
-    if 'level_roles' not in globals():
-        global level_roles
-        level_roles = {}
-    
-    if guild_id not in level_roles:
-        level_roles[guild_id] = {}
-    
-    level_roles[guild_id][level] = role_id
-    print(f"Level role saved: guild={guild_id}, level={level}, role={role_id}")
-
-# 사용자별 레벨 카드 설정 로드 함수
-def get_user_card_settings(guild_id, user_id):
-    """사용자별 레벨 카드 설정을 가져오는 것이다."""
-    c.execute("""
-        SELECT bg_color_top, bg_color_bottom, card_style
-        FROM user_card_settings
-        WHERE guild_id = ? AND user_id = ?
-    """, (guild_id, user_id))
-    
-    row = c.fetchone()
-    
-    if row:
-        return {
-            "bg_color_top": row[0],
-            "bg_color_bottom": row[1],
-            "card_style": row[2]
-        }
-    else:
-        # 기본 설정 반환
-        return {
-            "bg_color_top": "#9BBAFF",  # 기본 상단 색상 (연한 하늘색)
-            "bg_color_bottom": "#AAB5F5",  # 기본 하단 색상 (연한 보라색)
-            "card_style": "default"
-        }
-
-# 사용자별 레벨 카드 설정 업데이트 함수
-def update_user_card_settings(guild_id, user_id, settings):
-    """사용자별 레벨 카드 설정을 업데이트하는 것이다."""
-    c.execute("""
-        INSERT OR REPLACE INTO user_card_settings 
-        (guild_id, user_id, bg_color_top, bg_color_bottom, card_style, last_updated)
-        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-    """, (
-        guild_id,
-        user_id,
-        settings.get("bg_color_top", "#9BBAFF"),
-        settings.get("bg_color_bottom", "#AAB5F5"),
-        settings.get("card_style", "default")
-    ))
-    conn.commit()
-    
-    print(f"Updated card settings for user {user_id} in guild {guild_id}")
-    return True
 
 # 봇 실행 (환경 변수에서 토큰 가져오기)
 TOKEN = os.getenv('DISCORD_TOKEN')  # 'DISCORD_TOKEN'을 매개변수로 추가
@@ -471,9 +351,6 @@ import commands.role_exclude
 import commands.leaderboard
 import commands.aggregate
 import commands.reset_streak
-import commands.level
-import commands.level_role
-import commands.card_settings
 import commands.omikuji
 import commands.role_color
 import commands.auth  # 인증 시스템 모듈

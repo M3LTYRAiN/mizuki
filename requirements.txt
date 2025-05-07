@@ -1,2 +1,7 @@
 # ...existing requirements...
-python-dotenv==1.0.0
+disnake>=2.9.0
+python-dotenv>=1.0.0
+pytz>=2023.3
+aiohttp>=3.8.5
+# Python 3.13.2에서는 Pillow 최신 버전이 필요함
+Pillow>=10.2.0

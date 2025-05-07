@@ -12,10 +12,10 @@ class ManualView(disnake.ui.View):
         # 이미지 경로 정의
         self.base_path = "/Users/Luna/Desktop/chatzipbot/manual"
         
-        # 카테고리별 이미지 목록
+        # 카테고리별 이미지 목록 (레벨 관련 이미지 제거)
         self.images = {
-            "user": ["레벨.png", "리더보드.png", "오미쿠지.png", "카드설정.png"],
-            "admin": ["a레벨역할설정.png", "a역할설정.png", "a역할제외.png", "a역할초기화.png", "a집계.png"],
+            "user": ["리더보드.png", "오미쿠지.png"],  # 레벨.png, 카드설정.png 제거
+            "admin": ["a역할설정.png", "a역할제외.png", "a역할초기화.png", "a집계.png"],  # a레벨역할설정.png 제거
             "first": ["f역할색상.png"]
         }
         

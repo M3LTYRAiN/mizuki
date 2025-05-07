@@ -130,3 +130,18 @@
 
 이 프로젝트는 개인 및 비상업적 용도로만 사용할 수 있습니다.
 봇의 배포 및 수정에 관한 문의는 개발자에게 문의하십시오.
+
+
+# 미즈키봇 호스팅 가이드
+
+## 필요 사항
+- Python 3.10 이상
+- pip (Python 패키지 관리자)
+- Discord 봇 토큰
+- Tenor API 키 (GIF 기능 사용 시)
+
+## 설치 방법
+1. 저장소 클론하기:
+   ```bash
+   git clone https://github.com/[사용자명]/chatzipbot.git
+   cd chatzipbot
