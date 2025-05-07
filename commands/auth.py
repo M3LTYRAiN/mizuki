@@ -688,30 +688,3 @@ async def list_command(message):
             # 처리 완료 표시
             list_command.processing_ids.discard(message.id)
 
-# 봇이 새로운 서버에 들어왔을 때 이벤트
-@bot.event
-async def on_guild_join(guild):
-    # 인증 상태 확인
-    if not is_guild_authorized(guild.id):
-        # 시스템 메시지 채널 또는 일반 채널 찾기
-        if guild.system_channel:
-            channel = guild.system_channel
-        else:
-            # 메시지를 보낼 수 있는 첫 번째 텍스트 채널 찾기
-            for ch in guild.text_channels:
-                if ch.permissions_for(guild.me).send_messages:
-                    channel = ch
-                    break
-            else:
-                # 적합한 채널을 찾지 못한 경우
-                print(f"서버 {guild.name}에서 메시지를 보낼 채널을 찾을 수 없는 것이다.")
-                return
-        
-        # 인증 안내 메시지
-        await channel.send(
-            "안녕! 나를 초대해주셔서 감사한 것이다!!\n\n"
-            "⚠️ 나는 인증된 서버에서만 대답하는 것이다.\n"
-            "관리자가 명령어를 사용하면 인증 코드를 물어보는 것이다.\n"
-            "인증 코드가 없으신 경우 관리자 같은 사람에게 물어보라는 것이다.\n\n"
-            "📝 [개인정보 처리방침](https://mofucat.jp/ko/privacy-mizuki)도 확인하는 것이다."
-        )
