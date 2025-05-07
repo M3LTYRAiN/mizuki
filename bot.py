@@ -6,6 +6,12 @@ import sqlite3
 import datetime  # Add this import for date handling
 from dotenv import load_dotenv  # 추가
 import os  # 추가
+# 경고 필터링을 위해 warnings 모듈 추가
+import warnings
+
+# aiohttp 관련 경고 필터링
+warnings.filterwarnings("ignore", category=DeprecationWarning, 
+                       module="disnake.http")
 
 # MacOS에서 이벤트 루프 정책을 설정 (Python 3.13 충돌 해결)
 if hasattr(asyncio, 'set_event_loop_policy'):
