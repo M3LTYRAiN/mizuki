@@ -352,6 +352,8 @@ async def on_message(message):
 TOKEN = os.getenv('DISCORD_TOKEN')  # 'DISCORD_TOKEN'을 매개변수로 추가
 
 # Import commands after all definitions
+import commands.test  # 테스트 명령어 추가
+import commands.ping
 import commands.role_set
 import commands.role_exclude
 import commands.leaderboard
@@ -362,6 +364,7 @@ import commands.role_color
 import commands.auth  # 인증 시스템 모듈
 import commands.manual  # 메뉴얼 명령어 추가
 import commands.tenor
+
 
 # 토큰 디버깅
 if TOKEN:
