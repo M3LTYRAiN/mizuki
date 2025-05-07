@@ -17,6 +17,10 @@ COPY . .
 # 필요한 디렉토리 생성 확인
 RUN mkdir -p /app/manual /app/OTF /app/im
 
+# 폰트 및 이미지 파일 존재 확인
+RUN find /app -name "*.ttf" | sort
+RUN find /app -name "*.png" | sort
+
 # 필요한 패키지 설치 (이미지 처리 관련)
 RUN apt-get update && \
     apt-get install -y libgl1-mesa-glx libglib2.0-0 libfontconfig1 libharfbuzz0b && \

@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
 import pymongo
-from datetime import datetime
+from datetime import datetime, timezone  # timezone 추가
 
 # 환경 변수 로드
 load_dotenv()
@@ -62,7 +62,7 @@ def save_role_data(guild_id, first_role_id, other_role_id):
             "guild_id": guild_id,
             "first_role_id": first_role_id,
             "other_role_id": other_role_id,
-            "updated_at": datetime.utcnow()
+            "updated_at": datetime.now(timezone.utc)  # utcnow() 대신 사용
         }},
         upsert=True
     )
@@ -91,7 +91,7 @@ def save_excluded_role_data(guild_id, excluded_roles):
     # 새 데이터 저장
     if excluded_roles:
         documents = [
-            {"guild_id": guild_id, "role_id": role_id, "updated_at": datetime.utcnow()}
+            {"guild_id": guild_id, "role_id": role_id, "updated_at": datetime.now(timezone.utc)}  # 수정
             for role_id in excluded_roles
         ]
         excluded_roles_collection.insert_many(documents)
@@ -123,7 +123,7 @@ def save_chat_count(guild_id, user_id, count):
             "guild_id": guild_id,
             "user_id": user_id,
             "count": count,
-            "updated_at": datetime.utcnow()
+            "updated_at": datetime.now(timezone.utc)  # 수정
         }},
         upsert=True
     )

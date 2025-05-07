@@ -303,6 +303,59 @@ async def create_ranking_image(guild, top_chatters, first_role, other_role, star
     font_fallback_regular = ImageFont.truetype("/Users/Luna/Desktop/chatzipbot/OTF/夏蝉丸ゴシック.ttf", 24)
     font_fallback_small = ImageFont.truetype("/Users/Luna/Desktop/chatzipbot/OTF/夏蝉丸ゴシック.ttf", 22)
 
+    # 폰트 경로를 상대 경로로 변경
+    try:
+        # 경로 확인
+        import os
+        
+        # 폰트 파일 경로
+        font_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'OTF')
+        image_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'im')
+        
+        # 디버깅용 경로 출력
+        print(f"폰트 디렉토리 경로: {font_dir}")
+        print(f"이미지 디렉토리 경로: {image_dir}")
+        print(f"현재 작업 디렉토리: {os.getcwd()}")
+        
+        # 파일 존재 여부 확인
+        font_path = os.path.join(font_dir, "ONE Mobile POP.ttf")
+        fallback_font_path = os.path.join(font_dir, "夏蝉丸ゴシック.ttf")
+        whole_path = os.path.join(image_dir, "whole.png")
+        
+        if not os.path.exists(font_path):
+            print(f"⚠️ 폰트 파일이 없습니다: {font_path}")
+        if not os.path.exists(fallback_font_path):
+            print(f"⚠️ 보조 폰트 파일이 없습니다: {fallback_font_path}")
+        if not os.path.exists(whole_path):
+            print(f"⚠️ 헤더 이미지 파일이 없습니다: {whole_path}")
+        
+        # 폰트 설정
+        font_title = ImageFont.truetype(font_path, 72)
+        font_bold = ImageFont.truetype(font_path, 34)
+        font_medium = ImageFont.truetype(font_path, 26)
+        font_regular = ImageFont.truetype(font_path, 24)
+        font_thin = ImageFont.truetype(font_path, 20)
+        font_small = ImageFont.truetype(font_path, 22)
+        font_small_gray = ImageFont.truetype(font_path, 20)
+
+        # 일본어/한자용 폰트 설정
+        font_fallback_bold = ImageFont.truetype(fallback_font_path, 34)
+        font_fallback_medium = ImageFont.truetype(fallback_font_path, 26)
+        font_fallback_regular = ImageFont.truetype(fallback_font_path, 24)
+        font_fallback_small = ImageFont.truetype(fallback_font_path, 22)
+        
+        # whole.png 불러오기 및 배치
+        whole_image = Image.open(whole_path).convert("RGBA")
+        whole_image = whole_image.resize((width, whole_image.height), Image.Resampling.LANCZOS)
+        whole_y_offset = 0  # 상단에 배치
+        image.paste(whole_image, (0, whole_y_offset), whole_image)
+        
+    except Exception as e:
+        print(f"폰트 또는 이미지 로딩 오류: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
     def get_font(text, default_font, fallback_font):
         """일본어/한자 텍스트를 위한 폰트 선택"""
         if any(('\u3040' <= char <= '\u309f') or  # 히라가나

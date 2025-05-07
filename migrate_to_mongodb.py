@@ -2,7 +2,7 @@ import sqlite3
 import pymongo
 import os
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import datetime, timezone  # timezone 추가
 from collections import Counter
 
 def migrate_to_mongodb():
@@ -36,7 +36,7 @@ def migrate_to_mongodb():
                 "guild_id": guild_id,
                 "first_role_id": first_role_id,
                 "other_role_id": other_role_id,
-                "migrated_at": datetime.utcnow()
+                "migrated_at": datetime.now(timezone.utc)  # 수정
             }},
             upsert=True
         )
