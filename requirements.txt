@@ -5,6 +5,6 @@ pytz>=2023.3
 aiohttp>=3.8.5
 # Python 3.13.2에서는 Pillow 최신 버전이 필요함
 Pillow>=10.2.0
-pymongo==4.6.1
-dnspython==2.5.0  # MongoDB SRV 연결에 필요
-python -m pip install "pymongo[srv]"==3.6
+# MongoDB 관련 패키지
+pymongo==4.3.3  # 더 안정적인 버전으로 설정
+dnspython==2.3.0  # SRV 기록을 통한 MongoDB 연결에 필요

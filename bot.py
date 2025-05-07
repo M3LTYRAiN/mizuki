@@ -248,28 +248,47 @@ def load_role_streaks():
     print(f"Loaded {len(rows)} role streaks:", streak_data)  # 디버깅 메시지 개선
     return streak_data
 
+# 데이터베이스 모듈 임포트 (SQLite 대신 MongoDB 사용)
+import database as db
+from collections import Counter
+
 @bot.event
 async def on_ready():
-    global role_streaks
+    global role_streaks, server_roles, server_chat_counts, server_excluded_roles
     try:
         print(f"Logged in as {bot.user.name}")
         print(f"Bot ID: {bot.user.id}")
-        print(f"데이터베이스 경로: {DB_PATH}")
         
         # 봇 상태 메시지 설정 - "通りゃんせ　通りゃんせ" 게임 하는 중으로 표시
         game_activity = disnake.Game(name="通りゃんせ　通りゃんせ")
         await bot.change_presence(activity=game_activity)
         
-        # 데이터 로드
-        load_role_data()
-        load_excluded_role_data()
-        load_chat_counts()
-        role_streaks = load_role_streaks()
+        # MongoDB에서 데이터 로드
+        if db.is_mongo_connected():
+            print("MongoDB에서 데이터 로드 중...")
+            server_roles = db.load_role_data()
+            server_excluded_roles = db.load_excluded_role_data()
+            
+            # 채팅 카운트 로드 및 Counter 객체로 변환
+            chat_counts = db.load_chat_counts()
+            server_chat_counts = {}
+            for guild_id, counts in chat_counts.items():
+                server_chat_counts[guild_id] = Counter(counts)
+            
+            # 다른 데이터 로드...
+        else:
+            # SQLite에서 데이터 로드 (기존 코드)
+            print("SQLite에서 데이터 로드 중...")
+            load_role_data()
+            load_excluded_role_data()
+            load_chat_counts()
         
         print(f"✅ 봇이 준비되었습니다! (핑: {round(bot.latency * 1000)}ms)")
         
     except Exception as e:
         print(f"Error in on_ready: {e}")
+        import traceback
+        traceback.print_exc()
 
 def get_role_streak(guild_id, user_id):
     # 먼저 데이터베이스에서 확인 (캐시보다 데이터베이스 우선)
@@ -359,12 +378,25 @@ async def on_message(message):
 
     # 채팅 카운트 증가
     server_chat_counts[guild_id][user_id] += 1
-    save_chat_counts()  # 데이터베이스에 채팅 카운트 저장
+    
+    # MongoDB에 저장
+    if db.is_mongo_connected():
+        db.save_chat_count(guild_id, user_id, server_chat_counts[guild_id][user_id])
+    else:
+        # SQLite에 저장 (기존 코드)
+        save_chat_counts()
 
     # 메시지 저장
     c.execute("INSERT INTO messages (guild_id, user_id, message_id, timestamp) VALUES (?, ?, ?, ?)",
               (guild_id, user_id, message.id, message.created_at.isoformat()))
     conn.commit()
+
+# 에러 핸들링 이벤트 추가
+@bot.event
+async def on_slash_command_error(inter, error):
+    import traceback
+    print(f"명령어 오류 발생 ({inter.data.name}): {error}")
+    traceback.print_exc()
 
 # 봇 실행 (환경 변수에서 토큰 가져오기)
 TOKEN = os.getenv('DISCORD_TOKEN')  # 'DISCORD_TOKEN'을 매개변수로 추가
