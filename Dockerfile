@@ -17,6 +17,14 @@ COPY . .
 # 필요한 디렉토리 생성 확인
 RUN mkdir -p /app/manual /app/OTF /app/im
 
+# 디렉토리 내용 확인 (디버깅용)
+RUN echo "=== 수동 디렉토리 확인 ===" && \
+    ls -la /app/manual && \
+    echo "=== 폰트 디렉토리 확인 ===" && \
+    ls -la /app/OTF && \
+    echo "=== 이미지 디렉토리 확인 ===" && \
+    ls -la /app/im
+
 # 폰트 및 이미지 파일 존재 확인
 RUN find /app -name "*.ttf" | sort
 RUN find /app -name "*.png" | sort
