@@ -1,7 +1,8 @@
 from disnake.ext import commands
 import disnake
 from disnake.ui import Button, View
-from bot import bot, server_chat_counts, server_excluded_roles, get_last_aggregate_date
+from bot import bot, server_chat_counts, server_excluded_roles
+import database as db
 import pytz  # Add this import for timezone handling
 
 class LeaderboardView(View):
@@ -62,7 +63,10 @@ class LeaderboardView(View):
         embed.description = leaderboard_text
 
         # 마지막 집계 시간을 한국 시간으로 변환하고 포맷 변경
-        last_aggregate_date = get_last_aggregate_date(self.guild_id)
+        last_aggregate_date = None
+        if db.is_mongo_connected():
+            last_aggregate_date = db.get_last_aggregate_date(self.guild_id)
+        
         if last_aggregate_date:
             kst = pytz.timezone('Asia/Seoul')
             last_aggregate_date_kst = last_aggregate_date.astimezone(kst)

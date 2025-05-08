@@ -4,7 +4,8 @@ import random
 import string
 import datetime
 import asyncio
-from bot import bot, conn, c
+from bot import bot  # SQLite 관련 conn, c 임포트 제거
+import database as db
 
 # 서버 인증 상태 캐시 (메모리)
 authorized_guilds = {}
@@ -19,74 +20,49 @@ first_command_users = {}
 def load_authorized_guilds():
     global authorized_guilds
     
-    # SQLite 로드 (기존 코드)
-    c.execute("CREATE TABLE IF NOT EXISTS authorized_guilds (guild_id INTEGER PRIMARY KEY, authorized_at DATETIME, auth_code TEXT)")
-    c.execute("CREATE TABLE IF NOT EXISTS auth_codes (code TEXT PRIMARY KEY, created_at DATETIME, used INTEGER DEFAULT 0, used_by INTEGER DEFAULT NULL)")
-    
-    c.execute("SELECT guild_id FROM authorized_guilds")
-    rows = c.fetchall()
-    for row in rows:
-        authorized_guilds[row[0]] = True
-    
-    # MongoDB 로드 추가
+    # MongoDB에서 인증 데이터 로드
     if db.is_mongo_connected():
-        try:
-            mongo_guilds = list(db.authorized_guilds_collection.find({}, {"guild_id": 1}))
-            for doc in mongo_guilds:
-                authorized_guilds[doc["guild_id"]] = True
-            print(f"MongoDB에서 인증된 서버 {len(mongo_guilds)}개 로드 완료")
-        except Exception as e:
-            print(f"MongoDB 인증 서버 로드 오류: {e}")
-    
-    print(f"총 {len(authorized_guilds)}개 인증 서버 로드 완료")
+        mongo_guilds = db.load_authorized_guilds()
+        authorized_guilds = mongo_guilds
+        print(f"MongoDB에서 인증된 서버 {len(authorized_guilds)}개 로드 완료")
+    else:
+        print("⚠️ MongoDB에 연결되어 있지 않습니다. 인증된 서버 데이터를 로드할 수 없습니다.")
 
 # 초기 로딩
 load_authorized_guilds()
 
 # 서버의 인증 상태 확인
 def is_guild_authorized(guild_id):
-    return guild_id in authorized_guilds
+    if not db.is_mongo_connected():
+        return False
+    return guild_id in authorized_guilds or db.is_guild_authorized(guild_id)
 
-# 16자리 무작위 코드 생성 함수
+# 인증 코드 생성 함수 (SQLite 대신 MongoDB 사용)
 def generate_auth_code():
-    code_chars = string.ascii_letters + string.digits  # 영문자+숫자
-    code = ''.join(random.choice(code_chars) for _ in range(16))
-    
-    # 코드 중복 확인 및 저장
-    current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    c.execute("INSERT INTO auth_codes (code, created_at) VALUES (?, ?)", 
-              (code, current_time))
-    conn.commit()
-    
-    return code
+    if not db.is_mongo_connected():
+        print("⚠️ MongoDB에 연결되어 있지 않습니다. 인증 코드를 생성할 수 없습니다.")
+        return None
+    return db.generate_auth_code()
 
 # 인증 코드 유효성 검증 함수
 def validate_auth_code(code):
-    c.execute("SELECT used FROM auth_codes WHERE code = ?", (code,))
-    result = c.fetchone()
-    
-    if not result:
-        return False, "유효하지 않은 인증 코드입니다."
-    
-    if result[0] == 1:
-        return False, "이미 사용된 인증 코드입니다."
-    
-    return True, "유효한 인증 코드입니다."
+    if not db.is_mongo_connected():
+        return False, "MongoDB에 연결되어 있지 않습니다."
+    return db.validate_auth_code(code)
 
 # 인증 코드 사용 처리 함수
 def use_auth_code(code, guild_id):
-    # 코드 사용 처리
-    c.execute("UPDATE auth_codes SET used = 1, used_by = ? WHERE code = ?", 
-              (guild_id, code))
-    
-    # 서버 인증 상태 저장
-    current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    c.execute("INSERT OR REPLACE INTO authorized_guilds (guild_id, authorized_at, auth_code) VALUES (?, ?, ?)",
-              (guild_id, current_time, code))
-    conn.commit()
+    if not db.is_mongo_connected():
+        return False
+        
+    # MongoDB에 저장
+    result = db.use_auth_code(code, guild_id)
     
     # 메모리 캐시 업데이트
-    authorized_guilds[guild_id] = True
+    if result:
+        authorized_guilds[guild_id] = True
+    
+    return result
 
 # 명령어 체크 함수로 인증 상태 확인 (실행 전)
 def check_auth():
@@ -266,16 +242,15 @@ async def code_command(message):
 # !list 명령어 - 인증된 서버 목록 및 유효한 코드 확인/삭제
 @bot.listen('on_message')
 async def list_command(message):
-    # 중복 실행 방지 플래그 (메시지 ID 기반)
+    # 중복 실행 방지 플래그 설정
     if not hasattr(list_command, 'processing_ids'):
         list_command.processing_ids = set()
     
     if message.content.lower().startswith('!list'):
-        # 이미 처리 중인지 확인 (중복 실행 방지)
+        # 중복 실행 방지
         if message.id in list_command.processing_ids:
             return
         
-        # 처리 중 표시
         list_command.processing_ids.add(message.id)
         
         try:
@@ -290,10 +265,10 @@ async def list_command(message):
             except:
                 pass
             
-            # 먼저 "설정 중" 메시지 전송
+            # 설정 중 메시지
             setup_msg = await message.channel.send(f"⚙️ {message.author.mention}님의 인증 관리 패널을 설정 중인 것이다...")
             
-            # AuthManageView 클래스 정의 - 함수 내부로 이동
+            # AuthManageView 클래스 정의
             class AuthManageView(disnake.ui.View):
                 def __init__(self, author_id, setup_message, panel_message=None):
                     super().__init__(timeout=300)  # 5분 타임아웃
@@ -379,15 +354,18 @@ async def list_command(message):
                             )
                             
                             if confirm_inter.component.custom_id == "confirm":
-                                c.execute("DELETE FROM authorized_guilds WHERE guild_id = ?", (guild_id,))
-                                conn.commit()
-                                
-                                # 메모리 캐시에서도 삭제
-                                if guild_id in authorized_guilds:
-                                    del authorized_guilds[guild_id]
+                                # MongoDB에서 서버 삭제
+                                if db.is_mongo_connected():
+                                    db.authorized_guilds_collection.delete_one({"guild_id": guild_id})
                                     
-                                await confirm_inter.response.edit_message(content="✅ 서버 인증이 취소된 것이다.", view=None)
-                                await self.show_management_page(inter)
+                                    # 메모리 캐시에서도 삭제
+                                    if guild_id in authorized_guilds:
+                                        del authorized_guilds[guild_id]
+                                        
+                                    await confirm_inter.response.edit_message(content="✅ 서버 인증이 취소된 것이다.", view=None)
+                                    await self.show_management_page(inter)
+                                else:
+                                    await confirm_inter.response.edit_message(content="❌ MongoDB 연결 오류", view=None)
                             else:
                                 await confirm_inter.response.edit_message(content="❌ 서버 인증 취소가 취소된 것이다.", view=None)
                         except asyncio.TimeoutError:
@@ -418,10 +396,13 @@ async def list_command(message):
                             )
                             
                             if confirm_inter.component.custom_id == "confirm":
-                                c.execute("DELETE FROM auth_codes WHERE code = ?", (code,))
-                                conn.commit()
-                                await confirm_inter.response.edit_message(content="✅ 인증 코드가 삭제된 것이다.", view=None)
-                                await self.show_management_page(inter)
+                                # MongoDB에서 코드 삭제
+                                if db.is_mongo_connected():
+                                    db.auth_codes_collection.delete_one({"code": code})
+                                    await confirm_inter.response.edit_message(content="✅ 인증 코드가 삭제된 것이다.", view=None)
+                                    await self.show_management_page(inter)
+                                else:
+                                    await confirm_inter.response.edit_message(content="❌ MongoDB 연결 오류", view=None)
                             else:
                                 await confirm_inter.response.edit_message(content="❌ 코드 삭제가 취소된 것이다.", view=None)
                         except asyncio.TimeoutError:
@@ -437,13 +418,17 @@ async def list_command(message):
                         await self.show_codes_page(inter)
                 
                 async def show_servers_page(self, inter):
-                    c.execute("""
-                        SELECT guild_id, authorized_at, auth_code FROM authorized_guilds
-                        ORDER BY authorized_at DESC
-                    """)
-                    all_servers = c.fetchall()
+                    # MongoDB에서 서버 목록 조회 (수정된 부분)
+                    if db.is_mongo_connected():
+                        all_servers = []
+                        # MongoDB에서 인증된 서버 목록 조회 (정렬된 리스트)
+                        cursor = db.authorized_guilds_collection.find().sort("authorized_at", -1)
+                        for doc in cursor:  # sync for 사용
+                            all_servers.append((doc["guild_id"], doc.get("authorized_at", ""), doc.get("auth_code", "")))
+                    else:
+                        all_servers = []
                     
-                    # 페이지네이션
+                    # 페이지네이션 처리
                     items_per_page = 5
                     total_pages = max(1, (len(all_servers) + items_per_page - 1) // items_per_page)
                     self.page = max(1, min(self.page, total_pages))
@@ -463,16 +448,12 @@ async def list_command(message):
                         guild = bot.get_guild(guild_id)
                         name = guild.name if guild else f"알 수 없는 서버 (ID: {guild_id})"
                         
-                        # 인증 날짜
-                        try:
-                            auth_date = datetime.datetime.strptime(auth_date[:19], "%Y-%m-%d %H:%M:%S")
-                            date_str = auth_date.strftime("%Y-%m-%d %H:%M")
-                        except:
-                            date_str = "날짜 정보 없음"
+                        # 인증 날짜 포맷팅
+                        date_str = auth_date.strftime("%Y-%m-%d %H:%M") if isinstance(auth_date, datetime.datetime) else "날짜 정보 없음"
                             
                         embed.add_field(
                             name=f"{i}. {name}",
-                            value=f"ID: `{guild_id}`\n인증일: {date_str}\n인증코드: `{auth_code[:8]}...`",
+                            value=f"ID: `{guild_id}`\n인증일: {date_str}\n인증코드: `{auth_code[:8]}...`" if auth_code else f"ID: `{guild_id}`\n인증일: {date_str}",
                             inline=False
                         )
                     
@@ -504,14 +485,16 @@ async def list_command(message):
                         await inter.response.edit_message(embed=embed, view=self)
                 
                 async def show_codes_page(self, inter):
-                    c.execute("""
-                        SELECT code, created_at FROM auth_codes
-                        WHERE used = 0
-                        ORDER BY created_at DESC
-                    """)
-                    all_codes = c.fetchall()
+                    # MongoDB에서 미사용 인증 코드 조회 (수정된 부분)
+                    if db.is_mongo_connected():
+                        all_codes = []
+                        cursor = db.auth_codes_collection.find({"used": False}).sort("created_at", -1)
+                        for doc in cursor:  # sync for 사용
+                            all_codes.append((doc["code"], doc.get("created_at", "")))
+                    else:
+                        all_codes = []
                     
-                    # 페이지네이션
+                    # 페이지네이션 처리
                     items_per_page = 5
                     total_pages = max(1, (len(all_codes) + items_per_page - 1) // items_per_page)
                     self.page = max(1, min(self.page, total_pages))
@@ -528,12 +511,8 @@ async def list_command(message):
                     )
                     
                     for i, (code, created_at) in enumerate(page_codes, start_idx + 1):
-                        # 날짜
-                        try:
-                            c_date = datetime.datetime.strptime(created_at[:19], "%Y-%m-%d %H:%M:%S")
-                            date_str = c_date.strftime("%Y-%m-%d %H:%M")
-                        except:
-                            date_str = "날짜 정보 없음"
+                        # 날짜 포맷팅
+                        date_str = created_at.strftime("%Y-%m-%d %H:%M") if isinstance(created_at, datetime.datetime) else "날짜 정보 없음"
                             
                         embed.add_field(
                             name=f"{i}. 인증코드",
@@ -591,27 +570,26 @@ async def list_command(message):
                     except Exception as e:
                         print(f"패널 종료 중 오류: {e}")
             
-            # 1. 인증된 서버 목록 조회
-            c.execute("""
-                SELECT guild_id, authorized_at, auth_code
-                FROM authorized_guilds
-                ORDER BY authorized_at DESC
-            """)
-            server_rows = c.fetchall()
+            # MongoDB에서 서버 및 코드 정보 조회 (수정된 부분)
+            server_rows = []
+            code_rows = []
             
-            # 2. 사용되지 않은 인증 코드 조회
-            c.execute("""
-                SELECT code, created_at FROM auth_codes
-                WHERE used = 0
-                ORDER BY created_at DESC
-            """)
-            code_rows = c.fetchall()
+            if db.is_mongo_connected():
+                # 인증된 서버 조회
+                server_cursor = db.authorized_guilds_collection.find().sort("authorized_at", -1)
+                for doc in server_cursor:
+                    server_rows.append((doc["guild_id"], doc.get("authorized_at", ""), doc.get("auth_code", "")))
+                
+                # 사용되지 않은 인증 코드 조회
+                code_cursor = db.auth_codes_collection.find({"used": False}).sort("created_at", -1)
+                for doc in code_cursor:
+                    code_rows.append((doc["code"], doc.get("created_at", "")))
             
-            # 종합 임베드 생성 (서버 + 코드 목록)
+            # 종합 임베드 생성
             embed = disnake.Embed(
                 title="🔐 인증 관리 패널",
                 description=f"**{message.author.mention}님만 조작할 수 있는 패널인 것이다**\n다른 사용자는 버튼을 사용할 수 없는 것이다.\n\n"
-                            f"📝 [개인정보 처리방침](https://mofucat.jp/ko/privacy-mizuki)",
+                          f"📝 [개인정보 처리방침](https://mofucat.jp/ko/privacy-mizuki)",
                 color=disnake.Color.blue()
             )
             
@@ -696,6 +674,5 @@ async def list_command(message):
             except:
                 pass
         finally:
-            # 처리 완료 표시
             list_command.processing_ids.discard(message.id)
 
