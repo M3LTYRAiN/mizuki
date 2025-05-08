@@ -3,13 +3,17 @@ FROM python:3.13.2-slim
 
 WORKDIR /app
 
+# 먼저 패키지 업데이트 및 필요한 라이브러리 설치
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    libgl1 libglib2.0-0 libfontconfig1 libharfbuzz0 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 
-# 의존성 설치
+# 의존성 설치 (중복 제거)
 RUN pip install --no-cache-dir -r requirements.txt
-
-# MongoDB 관련 패키지 설치
-RUN pip install --no-cache-dir pymongo dnspython
 
 # 프로젝트 파일 복사
 COPY . .
@@ -29,16 +33,10 @@ RUN echo "=== 수동 디렉토리 확인 ===" && \
 RUN find /app -name "*.ttf" | sort
 RUN find /app -name "*.png" | sort
 
-# 필요한 패키지 설치 (이미지 처리 관련)
-RUN apt-get update && \
-    apt-get install -y libgl1-mesa-glx libglib2.0-0 libfontconfig1 libharfbuzz0b && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
 # asyncio 정책 설정 환경변수 (Python 3.13에서 이벤트 루프 안정성을 위해)
 ENV PYTHONDEVMODE=1
 
-# 경고 표시 억제를 위한 환경 변수 설정 (경고 필터링 추가)
+# 경고 표시 억제를 위한 환경 변수 설정
 ENV PYTHONWARNINGS="ignore::DeprecationWarning:disnake.http"
 
 # 로케일 설정 추가

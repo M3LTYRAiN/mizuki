@@ -1,10 +1,15 @@
-# ...existing requirements...
+# 디스코드 라이브러리
 disnake>=2.9.0
 python-dotenv>=1.0.0
 pytz>=2023.3
 aiohttp>=3.8.5
-# Python 3.13.2에서는 Pillow 최신 버전이 필요함
+
+# 이미지 처리
 Pillow>=10.2.0
+
 # MongoDB 관련 패키지
-pymongo==4.3.3  # 더 안정적인 버전으로 설정
-dnspython==2.3.0  # SRV 기록을 통한 MongoDB 연결에 필요
+pymongo==4.3.3
+dnspython==2.3.0
+
+# 기타 필요한 의존성
+requests>=2.31.0
