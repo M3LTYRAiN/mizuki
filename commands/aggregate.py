@@ -13,8 +13,28 @@ from commands.role_color import restore_role_original_color
 import os
 import sys
 
-# 폰트와 이미지 경로 정의
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # 프로젝트 루트 디렉토리
+# 여러 환경에서 작동하는 경로 탐색 로직
+def find_resource_dir():
+    # 우선 현재 파일 기준 상대 경로 시도
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    
+    # 가능한 경로 후보들
+    candidates = [
+        base_dir,                # 일반적인 상대 경로
+        "/app",                  # Docker 컨테이너 기본 경로
+        os.getcwd(),             # 현재 작업 디렉토리
+    ]
+    
+    # 각 후보 경로에서 필요한 디렉토리가 있는지 확인
+    for path in candidates:
+        if os.path.exists(os.path.join(path, "OTF")) and os.path.exists(os.path.join(path, "im")):
+            return path
+    
+    # 기본값으로 첫번째 후보 반환
+    return candidates[0]
+
+# 리소스 디렉토리 경로 찾기
+BASE_DIR = find_resource_dir()
 FONT_DIR = os.path.join(BASE_DIR, 'OTF')
 IMAGE_DIR = os.path.join(BASE_DIR, 'im')
 
@@ -23,14 +43,12 @@ MAIN_FONT_PATH = os.path.join(FONT_DIR, 'ONE Mobile POP.ttf')
 FALLBACK_FONT_PATH = os.path.join(FONT_DIR, '夏蝉丸ゴシック.ttf')
 WHOLE_IMAGE_PATH = os.path.join(IMAGE_DIR, 'whole.png')
 
-# 디버깅 정보 추가
+# 디버깅 정보 출력
+print(f"[🔍 경로 정보]")
 print(f"현재 작업 폴더: {os.getcwd()}")
-print(f"BASE_DIR: {BASE_DIR}")
-print(f"FONT_DIR: {FONT_DIR}")
-print(f"IMAGE_DIR: {IMAGE_DIR}")
-print(f"MAIN_FONT_PATH: {MAIN_FONT_PATH} (존재: {os.path.exists(MAIN_FONT_PATH)})")
-print(f"FALLBACK_FONT_PATH: {FALLBACK_FONT_PATH} (존재: {os.path.exists(FALLBACK_FONT_PATH)})")
-print(f"WHOLE_IMAGE_PATH: {WHOLE_IMAGE_PATH} (존재: {os.path.exists(WHOLE_IMAGE_PATH)})")
+print(f"사용 중인 기본 디렉토리: {BASE_DIR}")
+print(f"폰트 디렉토리: {FONT_DIR} (존재: {os.path.exists(FONT_DIR)})")
+print(f"이미지 디렉토리: {IMAGE_DIR} (존재: {os.path.exists(IMAGE_DIR)})")
 print(f"Python 모듈 경로: {sys.path}")
 
 @bot.slash_command(name="집계", description="서버에서 가장 채팅을 많이 친 6명을 집계하는 것이다.")
@@ -330,44 +348,36 @@ async def create_ranking_image(guild, top_chatters, first_role, other_role, star
         # 경로 확인
         import os
         
-        # 폰트 파일 경로
-        font_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'OTF')
-        image_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'im')
-        
-        # 디버깅용 경로 출력
-        print(f"폰트 디렉토리 경로: {font_dir}")
-        print(f"이미지 디렉토리 경로: {image_dir}")
+        # 폰트 파일 경로 (이미 정의된 경로 활용)
+        print(f"폰트 디렉토리 경로: {FONT_DIR}")
+        print(f"이미지 디렉토리 경로: {IMAGE_DIR}")
         print(f"현재 작업 디렉토리: {os.getcwd()}")
         
         # 파일 존재 여부 확인
-        font_path = os.path.join(font_dir, "ONE Mobile POP.ttf")
-        fallback_font_path = os.path.join(font_dir, "夏蝉丸ゴシック.ttf")
-        whole_path = os.path.join(image_dir, "whole.png")
+        if not os.path.exists(MAIN_FONT_PATH):
+            print(f"⚠️ 폰트 파일이 없습니다: {MAIN_FONT_PATH}")
+        if not os.path.exists(FALLBACK_FONT_PATH):
+            print(f"⚠️ 보조 폰트 파일이 없습니다: {FALLBACK_FONT_PATH}")
+        if not os.path.exists(WHOLE_IMAGE_PATH):
+            print(f"⚠️ 헤더 이미지 파일이 없습니다: {WHOLE_IMAGE_PATH}")
         
-        if not os.path.exists(font_path):
-            print(f"⚠️ 폰트 파일이 없습니다: {font_path}")
-        if not os.path.exists(fallback_font_path):
-            print(f"⚠️ 보조 폰트 파일이 없습니다: {fallback_font_path}")
-        if not os.path.exists(whole_path):
-            print(f"⚠️ 헤더 이미지 파일이 없습니다: {whole_path}")
-        
-        # 폰트 설정
-        font_title = ImageFont.truetype(font_path, 72)
-        font_bold = ImageFont.truetype(font_path, 34)
-        font_medium = ImageFont.truetype(font_path, 26)
-        font_regular = ImageFont.truetype(font_path, 24)
-        font_thin = ImageFont.truetype(font_path, 20)
-        font_small = ImageFont.truetype(font_path, 22)
-        font_small_gray = ImageFont.truetype(font_path, 20)
+        # 폰트 설정 - 상대 경로 사용
+        font_title = ImageFont.truetype(MAIN_FONT_PATH, 72)
+        font_bold = ImageFont.truetype(MAIN_FONT_PATH, 34)
+        font_medium = ImageFont.truetype(MAIN_FONT_PATH, 26)
+        font_regular = ImageFont.truetype(MAIN_FONT_PATH, 24)
+        font_thin = ImageFont.truetype(MAIN_FONT_PATH, 20)
+        font_small = ImageFont.truetype(MAIN_FONT_PATH, 22)
+        font_small_gray = ImageFont.truetype(MAIN_FONT_PATH, 20)
 
         # 일본어/한자용 폰트 설정
-        font_fallback_bold = ImageFont.truetype(fallback_font_path, 34)
-        font_fallback_medium = ImageFont.truetype(fallback_font_path, 26)
-        font_fallback_regular = ImageFont.truetype(fallback_font_path, 24)
-        font_fallback_small = ImageFont.truetype(fallback_font_path, 22)
+        font_fallback_bold = ImageFont.truetype(FALLBACK_FONT_PATH, 34)
+        font_fallback_medium = ImageFont.truetype(FALLBACK_FONT_PATH, 26)
+        font_fallback_regular = ImageFont.truetype(FALLBACK_FONT_PATH, 24)
+        font_fallback_small = ImageFont.truetype(FALLBACK_FONT_PATH, 22)
         
         # whole.png 불러오기 및 배치
-        whole_image = Image.open(whole_path).convert("RGBA")
+        whole_image = Image.open(WHOLE_IMAGE_PATH).convert("RGBA")
         whole_image = whole_image.resize((width, whole_image.height), Image.Resampling.LANCZOS)
         whole_y_offset = 0  # 상단에 배치
         image.paste(whole_image, (0, whole_y_offset), whole_image)

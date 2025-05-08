@@ -20,3 +20,5 @@ env/
 # 백업 파일
 backups/
 *backup*
+
+# manual 폴더는 제외하지 않음
