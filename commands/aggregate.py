@@ -10,6 +10,28 @@ from bot import bot, server_roles, server_excluded_roles, get_messages_in_period
 import random
 import math
 from commands.role_color import restore_role_original_color
+import os
+import sys
+
+# 폰트와 이미지 경로 정의
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # 프로젝트 루트 디렉토리
+FONT_DIR = os.path.join(BASE_DIR, 'OTF')
+IMAGE_DIR = os.path.join(BASE_DIR, 'im')
+
+# 폰트 및 이미지 경로
+MAIN_FONT_PATH = os.path.join(FONT_DIR, 'ONE Mobile POP.ttf')
+FALLBACK_FONT_PATH = os.path.join(FONT_DIR, '夏蝉丸ゴシック.ttf')
+WHOLE_IMAGE_PATH = os.path.join(IMAGE_DIR, 'whole.png')
+
+# 디버깅 정보 추가
+print(f"현재 작업 폴더: {os.getcwd()}")
+print(f"BASE_DIR: {BASE_DIR}")
+print(f"FONT_DIR: {FONT_DIR}")
+print(f"IMAGE_DIR: {IMAGE_DIR}")
+print(f"MAIN_FONT_PATH: {MAIN_FONT_PATH} (존재: {os.path.exists(MAIN_FONT_PATH)})")
+print(f"FALLBACK_FONT_PATH: {FALLBACK_FONT_PATH} (존재: {os.path.exists(FALLBACK_FONT_PATH)})")
+print(f"WHOLE_IMAGE_PATH: {WHOLE_IMAGE_PATH} (존재: {os.path.exists(WHOLE_IMAGE_PATH)})")
+print(f"Python 모듈 경로: {sys.path}")
 
 @bot.slash_command(name="집계", description="서버에서 가장 채팅을 많이 친 6명을 집계하는 것이다.")
 @commands.has_permissions(administrator=True)

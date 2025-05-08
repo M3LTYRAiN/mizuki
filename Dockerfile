@@ -18,6 +18,23 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 프로젝트 파일 복사
 COPY . .
 
+# 각 특수 디렉토리에 대해 볼륨 마운트 지점 생성
+RUN mkdir -p /app/OTF /app/im /app/manual
+
+# 폰트 및 이미지 파일을 직접 복사 (로컬에서 파일이 있어야 함)
+COPY OTF/ /app/OTF/
+COPY im/ /app/im/
+COPY manual/ /app/manual/
+
+# 디렉토리 권한 설정
+RUN chmod -R 755 /app/OTF /app/im /app/manual
+
+# 디버깅: 파일 존재 여부 확인
+RUN echo "=== 폰트 파일 확인 ===" && \
+    find /app -name "*.ttf" && \
+    echo "=== 이미지 파일 확인 ===" && \
+    find /app -name "*.png"
+
 # 필요한 디렉토리 생성 확인
 RUN mkdir -p /app/manual /app/OTF /app/im
 
