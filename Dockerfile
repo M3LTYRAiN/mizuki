@@ -6,7 +6,7 @@ WORKDIR /app
 # 먼저 패키지 업데이트 및 필요한 라이브러리 설치
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    libgl1 libglib2.0-0 libfontconfig1 libharfbuzz0 \
+    libgl1-mesa-glx libglib2.0-0 libfontconfig1 libharfbuzz0b \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
