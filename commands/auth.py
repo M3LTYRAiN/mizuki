@@ -18,16 +18,27 @@ first_command_users = {}
 # 데이터베이스에서 인증된 서버 목록 로드
 def load_authorized_guilds():
     global authorized_guilds
-    # 테이블 존재 여부 확인 후 생성
+    
+    # SQLite 로드 (기존 코드)
     c.execute("CREATE TABLE IF NOT EXISTS authorized_guilds (guild_id INTEGER PRIMARY KEY, authorized_at DATETIME, auth_code TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS auth_codes (code TEXT PRIMARY KEY, created_at DATETIME, used INTEGER DEFAULT 0, used_by INTEGER DEFAULT NULL)")
     
-    # 이제 데이터 로드
     c.execute("SELECT guild_id FROM authorized_guilds")
     rows = c.fetchall()
     for row in rows:
         authorized_guilds[row[0]] = True
-    print(f"인증된 서버 {len(rows)}개 로드 완료")
+    
+    # MongoDB 로드 추가
+    if db.is_mongo_connected():
+        try:
+            mongo_guilds = list(db.authorized_guilds_collection.find({}, {"guild_id": 1}))
+            for doc in mongo_guilds:
+                authorized_guilds[doc["guild_id"]] = True
+            print(f"MongoDB에서 인증된 서버 {len(mongo_guilds)}개 로드 완료")
+        except Exception as e:
+            print(f"MongoDB 인증 서버 로드 오류: {e}")
+    
+    print(f"총 {len(authorized_guilds)}개 인증 서버 로드 완료")
 
 # 초기 로딩
 load_authorized_guilds()

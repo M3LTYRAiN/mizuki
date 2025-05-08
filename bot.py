@@ -259,25 +259,28 @@ async def on_ready():
         print(f"Logged in as {bot.user.name}")
         print(f"Bot ID: {bot.user.id}")
         
-        # 봇 상태 메시지 설정 - "通りゃんせ　通りゃんせ" 게임 하는 중으로 표시
+        # 봇 상태 메시지 설정
         game_activity = disnake.Game(name="通りゃんせ　通りゃんせ")
         await bot.change_presence(activity=game_activity)
         
-        # MongoDB에서 데이터 로드
+        # MongoDB 데이터 상태 확인
         if db.is_mongo_connected():
             print("MongoDB에서 데이터 로드 중...")
+            db.debug_mongodb_data()  # 데이터 상태 확인
+            
+            # 데이터 로드
             server_roles = db.load_role_data()
             server_excluded_roles = db.load_excluded_role_data()
             
-            # 채팅 카운트 로드 및 Counter 객체로 변환
+            # 채팅 카운트 로드
             chat_counts = db.load_chat_counts()
             server_chat_counts = {}
             for guild_id, counts in chat_counts.items():
                 server_chat_counts[guild_id] = Counter(counts)
             
-            # 다른 데이터 로드...
+            print("MongoDB 데이터 로드 완료!")
         else:
-            # SQLite에서 데이터 로드 (기존 코드)
+            # SQLite에서 데이터 로드
             print("SQLite에서 데이터 로드 중...")
             load_role_data()
             load_excluded_role_data()

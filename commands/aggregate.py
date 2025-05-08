@@ -227,7 +227,7 @@ async def create_ranking_image(guild, top_chatters, first_role, other_role, star
     }
 
     # 장식 폰트 설정
-    deco_font = ImageFont.truetype("/Users/Luna/Desktop/chatzipbot/OTF/ONE Mobile POP.ttf", 20)
+    deco_font = ImageFont.truetype(MAIN_FONT_PATH, 20)
 
     # 장식 위치 분포 수정
     def draw_decorations_evenly(shape, count_range, color_opacity=50):  # 기존 70에서 50으로 낮춤
@@ -265,7 +265,7 @@ async def create_ranking_image(guild, top_chatters, first_role, other_role, star
     image.paste(white_rect, (0, 0), white_rect)
 
     # 6. whole.png 불러오기 및 배치 (헤더와 로고를 하나로 합친 이미지)
-    whole_path = "/Users/Luna/Desktop/chatzipbot/im/whole.png"
+    whole_path = WHOLE_IMAGE_PATH
     try:
         whole_image = Image.open(whole_path).convert("RGBA")
         whole_image = whole_image.resize((width, whole_image.height), Image.Resampling.LANCZOS)
@@ -289,19 +289,19 @@ async def create_ranking_image(guild, top_chatters, first_role, other_role, star
         draw.text((x, y), "★", font=deco_font, fill=(255, 215, 0, alpha), anchor="mm")
 
     # 폰트 설정
-    font_title = ImageFont.truetype("/Users/Luna/Desktop/chatzipbot/OTF/ONE Mobile POP.ttf", 72)
-    font_bold = ImageFont.truetype("/Users/Luna/Desktop/chatzipbot/OTF/ONE Mobile POP.ttf", 34)
-    font_medium = ImageFont.truetype("/Users/Luna/Desktop/chatzipbot/OTF/ONE Mobile POP.ttf", 26)
-    font_regular = ImageFont.truetype("/Users/Luna/Desktop/chatzipbot/OTF/ONE Mobile POP.ttf", 24)
-    font_thin = ImageFont.truetype("/Users/Luna/Desktop/chatzipbot/OTF/ONE Mobile POP.ttf", 20)
-    font_small = ImageFont.truetype("/Users/Luna/Desktop/chatzipbot/OTF/ONE Mobile POP.ttf", 22)
-    font_small_gray = ImageFont.truetype("/Users/Luna/Desktop/chatzipbot/OTF/ONE Mobile POP.ttf", 20)
+    font_title = ImageFont.truetype(MAIN_FONT_PATH, 72)
+    font_bold = ImageFont.truetype(MAIN_FONT_PATH, 34)
+    font_medium = ImageFont.truetype(MAIN_FONT_PATH, 26)
+    font_regular = ImageFont.truetype(MAIN_FONT_PATH, 24)
+    font_thin = ImageFont.truetype(MAIN_FONT_PATH, 20)
+    font_small = ImageFont.truetype(MAIN_FONT_PATH, 22)
+    font_small_gray = ImageFont.truetype(MAIN_FONT_PATH, 20)
 
     # 일본어/한자용 폰트 설정
-    font_fallback_bold = ImageFont.truetype("/Users/Luna/Desktop/chatzipbot/OTF/夏蝉丸ゴシック.ttf", 34)
-    font_fallback_medium = ImageFont.truetype("/Users/Luna/Desktop/chatzipbot/OTF/夏蝉丸ゴシック.ttf", 26)
-    font_fallback_regular = ImageFont.truetype("/Users/Luna/Desktop/chatzipbot/OTF/夏蝉丸ゴシック.ttf", 24)
-    font_fallback_small = ImageFont.truetype("/Users/Luna/Desktop/chatzipbot/OTF/夏蝉丸ゴシック.ttf", 22)
+    font_fallback_bold = ImageFont.truetype(FALLBACK_FONT_PATH, 34)
+    font_fallback_medium = ImageFont.truetype(FALLBACK_FONT_PATH, 26)
+    font_fallback_regular = ImageFont.truetype(FALLBACK_FONT_PATH, 24)
+    font_fallback_small = ImageFont.truetype(FALLBACK_FONT_PATH, 22)
 
     # 폰트 경로를 상대 경로로 변경
     try:
@@ -622,7 +622,7 @@ async def create_ranking_image(guild, top_chatters, first_role, other_role, star
 
     # 순위별 장식
     def draw_rank_decoration(x, y, rank_index):
-        deco_font = ImageFont.truetype("/Users/Luna/Desktop/chatzipbot/OTF/ONE Mobile POP.ttf", 24)
+        deco_font = ImageFont.truetype(MAIN_FONT_PATH, 24)
         if rank_index == 0:
             draw.regular_polygon((x, y, 15), n_sides=4, rotation=45, fill=(255, 215, 0, 255))
         elif rank_index == 1:
@@ -668,10 +668,10 @@ async def create_ranking_image(guild, top_chatters, first_role, other_role, star
                 name_font_size = get_fitting_font_size(
                     member.display_name,
                     name_max_width,
-                    "/Users/Luna/Desktop/chatzipbot/OTF/ONE Mobile POP.ttf",
+                    MAIN_FONT_PATH,
                     34  # 기존 크기
                 )
-                adjusted_font = ImageFont.truetype("/Users/Luna/Desktop/chatzipbot/OTF/ONE Mobile POP.ttf", name_font_size)
+                adjusted_font = ImageFont.truetype(MAIN_FONT_PATH, name_font_size)
                 
                 # 폰트 크기에 따라 y 위치 미세 조정
                 y_offset = (34 - name_font_size) / 2  # 기존 크기와의 차이를 보정
@@ -711,10 +711,10 @@ async def create_ranking_image(guild, top_chatters, first_role, other_role, star
                 name_font_size = get_fitting_font_size(
                     member.display_name,
                     name_max_width,
-                    "/Users/Luna/Desktop/chatzipbot/OTF/ONE Mobile POP.ttf",
+                    MAIN_FONT_PATH,
                     34
                 )
-                adjusted_font = ImageFont.truetype("/Users/Luna/Desktop/chatzipbot/OTF/ONE Mobile POP.ttf", name_font_size)
+                adjusted_font = ImageFont.truetype(MAIN_FONT_PATH, name_font_size)
                 
                 y_offset = (34 - name_font_size) / 2
                 draw_text_with_outline(text_x, y_offset_bottom + 210 + y_offset, member.display_name,
@@ -756,10 +756,10 @@ async def create_ranking_image(guild, top_chatters, first_role, other_role, star
                 name_font_size = get_fitting_font_size(
                     member.display_name,
                     name_max_width,
-                    "/Users/Luna/Desktop/chatzipbot/OTF/ONE Mobile POP.ttf",
+                    MAIN_FONT_PATH,
                     26  # 3-6등의 기본 폰트 크기
                 )
-                adjusted_font = ImageFont.truetype("/Users/Luna/Desktop/chatzipbot/OTF/ONE Mobile POP.ttf", name_font_size)
+                adjusted_font = ImageFont.truetype(MAIN_FONT_PATH, name_font_size)
                 
                 y_offset = (26 - name_font_size) / 2
                 draw_text_with_outline(x_text, y_pos + 47 + y_offset, member.display_name,
