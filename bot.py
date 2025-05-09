@@ -135,6 +135,9 @@ async def on_ready():
         print(f"Logged in as {bot.user.name}")
         print(f"Bot ID: {bot.user.id}")
         
+        # 폰트 및 필수 디렉토리 확인
+        check_required_files()
+        
         # 봇 상태 메시지 설정
         game_activity = disnake.Game(name="通りゃんせ　通りゃんせ")
         await bot.change_presence(activity=game_activity)
@@ -164,6 +167,67 @@ async def on_ready():
         print(f"Error in on_ready: {e}")
         import traceback
         traceback.print_exc()
+
+# 필수 파일/폴더 확인 함수 추가
+def check_required_files():
+    """필수 파일 및 폴더 존재 확인"""
+    # 필수 디렉토리 목록
+    required_dirs = ["OTF", "im", "manual"]
+    
+    print("\n==== 필수 파일/폴더 확인 ====")
+    
+    # 현재 디렉토리 표시
+    current_dir = os.getcwd()
+    print(f"현재 작업 디렉토리: {current_dir}")
+    
+    # 디렉토리 확인
+    for dir_name in required_dirs:
+        dir_path = os.path.join(current_dir, dir_name)
+        if os.path.exists(dir_path):
+            print(f"✅ {dir_name} 디렉토리 존재")
+            
+            # 디렉토리 내 파일 확인 (최대 5개만 표시)
+            try:
+                files = os.listdir(dir_path)[:5]
+                if files:
+                    file_list = ", ".join(files)
+                    if len(files) < len(os.listdir(dir_path)):
+                        file_list += f" 외 {len(os.listdir(dir_path)) - len(files)}개"
+                    print(f"   파일 목록: {file_list}")
+                else:
+                    print(f"   ⚠️ {dir_name} 디렉토리가 비어 있습니다")
+            except Exception as e:
+                print(f"   ⚠️ 파일 목록 확인 중 오류: {e}")
+        else:
+            print(f"❌ {dir_name} 디렉토리가 없습니다")
+            
+            # 디렉토리 생성 시도
+            try:
+                os.makedirs(dir_path)
+                print(f"   → {dir_name} 디렉토리를 생성했습니다")
+            except Exception as e:
+                print(f"   ⚠️ 디렉토리 생성 실패: {e}")
+    
+    print("===============================\n")
+
+@bot.event
+async def on_guild_join(guild):
+    if db.is_mongo_connected():
+        print(f"새로운 서버 참여: {guild.name} (ID: {guild.id})")
+        try:
+            # 해당 서버의 역할 데이터 로드
+            role_data = db.get_guild_role_data(guild.id)
+            if role_data:
+                server_roles[guild.id] = role_data
+                print(f"서버 {guild.id}의 역할 데이터 로드 완료")
+                
+            # 제외 역할 데이터 로드
+            excluded_roles = db.get_guild_excluded_roles(guild.id)
+            if excluded_roles:
+                server_excluded_roles[guild.id] = excluded_roles
+                print(f"서버 {guild.id}의 제외 역할 데이터 로드 완료")
+        except Exception as e:
+            print(f"⚠️ 서버 {guild.id} 데이터 로드 중 오류 발생: {e}")
 
 @bot.event
 async def on_message(message):

@@ -26,7 +26,7 @@ COPY OTF/ /app/OTF/
 COPY im/ /app/im/
 COPY manual/ /app/manual/
 
-# 디렉토리 권한 설정
+# 디렉토리 권한 설정 (실행 권한 추가)
 RUN chmod -R 755 /app/OTF /app/im /app/manual
 
 # 디버깅: 파일 존재 여부 확인

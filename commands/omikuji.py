@@ -2,6 +2,7 @@ import io
 import disnake
 from disnake.ext import commands
 import random
+import os
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from bot import bot
 import math
@@ -65,6 +66,59 @@ def generate_paper_texture(width, height):
 
     return paper
 
+# 폰트 로딩 함수 추가
+def load_font(font_name, size):
+    """여러 경로에서 폰트 파일을 찾아 로드합니다"""
+    
+    # 가능한 폰트 경로 목록
+    font_paths = [
+        # 상대 경로
+        os.path.join("OTF", font_name),
+        os.path.join("./OTF", font_name),
+        os.path.join("../OTF", font_name),
+        # 프로젝트 루트 기준 절대 경로
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "OTF", font_name),
+        # Docker 환경 경로
+        os.path.join("/app/OTF", font_name),
+        # 원래 경로
+        os.path.join("/Users/Luna/Desktop/chatzipbot/OTF", font_name),
+    ]
+    
+    # 폰트 디버그 정보
+    print(f"폰트 로드 시도: {font_name} (크기: {size})")
+    print(f"현재 작업 디렉토리: {os.getcwd()}")
+    
+    # 각 경로 시도
+    for path in font_paths:
+        try:
+            print(f"폰트 경로 시도: {path}")
+            if os.path.exists(path):
+                print(f"✅ 폰트 파일 발견: {path}")
+                return ImageFont.truetype(path, size)
+            else:
+                print(f"❌ 폰트 파일 없음: {path}")
+        except Exception as e:
+            print(f"폰트 로드 실패 ({path}): {e}")
+    
+    # 시스템 폰트 시도 (리눅스/맥)
+    system_fonts = [
+        "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",  # 리눅스 나눔고딕
+        "/System/Library/Fonts/AppleSDGothicNeo.ttc",       # 맥 애플고딕
+        "/usr/share/fonts/TTF/gulim.ttf",                   # 기타 폰트
+    ]
+    
+    for path in system_fonts:
+        try:
+            if os.path.exists(path):
+                print(f"✅ 시스템 폰트 사용: {path}")
+                return ImageFont.truetype(path, size)
+        except Exception:
+            pass
+    
+    # 모든 시도 실패 시 기본 폰트 반환
+    print("⚠️ 모든 폰트 로드 실패, 기본 폰트 사용")
+    return ImageFont.load_default()
+
 # 오미쿠지 이미지 생성 함수
 def create_omikuji_image(fortune_level, fortune_number):
     # 이미지 크기 설정 (가로는 좁고, 세로는 길게 설정)
@@ -77,15 +131,9 @@ def create_omikuji_image(fortune_level, fortune_number):
     margin = 20
     draw.rectangle([margin, margin, width - margin, height - margin], outline="red", width=5)
 
-    # 폰트 설정
-    try:
-        title_font = ImageFont.truetype("/Users/Luna/Desktop/chatzipbot/OTF/GowunBatang-Bold.ttf", 40)
-        text_font = ImageFont.truetype("/Users/Luna/Desktop/chatzipbot/OTF/GowunBatang-Regular.ttf", 30)
-    except IOError:
-        # 기본 폰트 사용 (시스템에 따라 폰트 이름이 다를 수 있음)
-        title_font = ImageFont.load_default()
-        text_font = ImageFont.load_default()
-        print("경고: 지정된 폰트 파일을 찾을 수 없어 기본 폰트를 사용하는 것이다.")
+    # 폰트 설정 (개선된 방식)
+    title_font = load_font("GowunBatang-Bold.ttf", 40)
+    text_font = load_font("GowunBatang-Regular.ttf", 30)
 
     # 제목 (가로, 번호 추가)
     title = get_fortune_title(fortune_level, fortune_number)
