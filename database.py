@@ -2,6 +2,10 @@ import os
 from dotenv import load_dotenv
 import pymongo
 from datetime import datetime, timezone  # timezone 추가
+import warnings
+
+# MongoDB 관련 경고 무시
+warnings.filterwarnings("ignore", message="datetime.datetime.utcfromtimestamp.*is deprecated")
 
 # 환경 변수 로드
 load_dotenv()
@@ -50,16 +54,30 @@ def is_mongo_connected():
 # 역할 데이터 로드
 def load_role_data():
     if not is_mongo_connected():
+        print("⚠️ MongoDB에 연결되지 않아 역할 데이터를 로드할 수 없습니다")
         return {}
 
     result = {}
-    for doc in roles_collection.find():
-        guild_id = doc["guild_id"]
-        result[guild_id] = {
-            "first": doc["first_role_id"],
-            "other": doc["other_role_id"]
-        }
-    return result
+    try:
+        # 모든 역할 설정 불러오기
+        cursor = roles_collection.find()
+        roles_count = 0
+        
+        for doc in cursor:
+            guild_id = doc["guild_id"]
+            result[guild_id] = {
+                "first": doc["first_role_id"],
+                "other": doc["other_role_id"]
+            }
+            roles_count += 1
+            
+        print(f"역할 데이터 로드 완료: {roles_count}개 서버")
+        return result
+    except Exception as e:
+        print(f"⚠️ 역할 데이터 로드 중 오류 발생: {e}")
+        import traceback
+        traceback.print_exc()
+        return {}
 
 # 역할 데이터 저장
 def save_role_data(guild_id, first_role_id, other_role_id):
@@ -114,18 +132,27 @@ def load_excluded_role_data():
 # 제외 역할 저장
 def save_excluded_role_data(guild_id, excluded_roles):
     if not is_mongo_connected():
+        print(f"⚠️ MongoDB에 연결되지 않아 제외 역할을 저장할 수 없습니다 (길드: {guild_id})")
         return
 
-    # 기존 데이터 삭제
-    excluded_roles_collection.delete_many({"guild_id": guild_id})
-
-    # 새 데이터 저장
-    if excluded_roles:
-        documents = [
-            {"guild_id": guild_id, "role_id": role_id, "updated_at": datetime.now(timezone.utc)}  # 수정
-            for role_id in excluded_roles
-        ]
-        excluded_roles_collection.insert_many(documents)
+    try:
+        # 기존 데이터 삭제
+        delete_result = excluded_roles_collection.delete_many({"guild_id": guild_id})
+        
+        # 새 데이터 저장
+        if excluded_roles:
+            documents = [
+                {"guild_id": guild_id, "role_id": role_id, "updated_at": datetime.now(timezone.utc)}
+                for role_id in excluded_roles
+            ]
+            insert_result = excluded_roles_collection.insert_many(documents)
+            print(f"제외 역할 저장 완료: 길드 {guild_id}, {len(excluded_roles)}개 역할, 삭제: {delete_result.deleted_count}개, 삽입: {len(insert_result.inserted_ids)}개")
+        else:
+            print(f"제외 역할 초기화: 길드 {guild_id}, 삭제: {delete_result.deleted_count}개")
+    except Exception as e:
+        print(f"⚠️ 제외 역할 저장 중 오류 발생: {e}")
+        import traceback
+        traceback.print_exc()
 
 # 채팅 카운트 로드
 def load_chat_counts():
@@ -375,60 +402,6 @@ def delete_auth_code(code):
     result = auth_codes_collection.delete_one({"code": code})
     return result.deleted_count > 0
 
-
-# 역할 데이터 로드 함수 개선
-def load_role_data():
-    if not is_mongo_connected():
-        print("⚠️ MongoDB에 연결되지 않아 역할 데이터를 로드할 수 없습니다")
-        return {}
-
-    result = {}
-    try:
-        # 모든 역할 설정 불러오기
-        cursor = roles_collection.find()
-        roles_count = 0
-        
-        for doc in cursor:
-            guild_id = doc["guild_id"]
-            result[guild_id] = {
-                "first": doc["first_role_id"],
-                "other": doc["other_role_id"]
-            }
-            roles_count += 1
-            
-        print(f"역할 데이터 로드 완료: {roles_count}개 서버")
-        return result
-    except Exception as e:
-        print(f"⚠️ 역할 데이터 로드 중 오류 발생: {e}")
-        import traceback
-        traceback.print_exc()
-        return {}
-
-# 제외 역할 저장 함수 개선
-def save_excluded_role_data(guild_id, excluded_roles):
-    if not is_mongo_connected():
-        print(f"⚠️ MongoDB에 연결되지 않아 제외 역할을 저장할 수 없습니다 (길드: {guild_id})")
-        return
-
-    try:
-        # 기존 데이터 삭제
-        delete_result = excluded_roles_collection.delete_many({"guild_id": guild_id})
-        
-        # 새 데이터 저장
-        if excluded_roles:
-            documents = [
-                {"guild_id": guild_id, "role_id": role_id, "updated_at": datetime.now(timezone.utc)}
-                for role_id in excluded_roles
-            ]
-            insert_result = excluded_roles_collection.insert_many(documents)
-            print(f"제외 역할 저장 완료: 길드 {guild_id}, {len(excluded_roles)}개 역할, 삭제: {delete_result.deleted_count}개, 삽입: {len(insert_result.inserted_ids)}개")
-        else:
-            print(f"제외 역할 초기화: 길드 {guild_id}, 삭제: {delete_result.deleted_count}개")
-    except Exception as e:
-        print(f"⚠️ 제외 역할 저장 중 오류 발생: {e}")
-        import traceback
-        traceback.print_exc()
-
 # 특정 서버의 역할 데이터만 로드하는 함수
 def get_guild_role_data(guild_id):
     if not is_mongo_connected():
@@ -468,3 +441,52 @@ def get_guild_excluded_roles(guild_id):
     except Exception as e:
         print(f"⚠️ 서버 {guild_id}의 제외 역할 데이터 로드 중 오류 발생: {e}")
         return []
+
+# MongoDB 디버그 함수 추가
+def debug_mongodb_data():
+    """MongoDB 컬렉션 및 데이터에 대한 디버그 정보를 출력합니다"""
+    if not is_mongo_connected():
+        print("⚠️ MongoDB에 연결되어 있지 않아 디버그 정보를 확인할 수 없습니다")
+        return
+    
+    try:
+        print("\n==== MongoDB 디버그 정보 ====")
+        
+        # 데이터베이스 정보
+        print(f"데이터베이스 이름: {db.name}")
+        print(f"사용 가능한 컬렉션: {db.list_collection_names()}")
+        
+        # 컬렉션 통계
+        collections = {
+            "roles": roles_collection,
+            "excluded_roles": excluded_roles_collection, 
+            "chat_counts": chat_counts_collection,
+            "messages": messages_collection,
+            "aggregate_dates": aggregate_dates_collection,
+            "role_streaks": role_streaks_collection,
+            "auth_codes": auth_codes_collection,
+            "authorized_guilds": authorized_guilds_collection
+        }
+        
+        print("\n컬렉션 문서 수:")
+        for name, collection in collections.items():
+            count = collection.count_documents({})
+            print(f"  {name}: {count}개 문서")
+        
+        # 각 컬렉션의 샘플 데이터(있는 경우)
+        print("\n샘플 데이터:")
+        for name, collection in collections.items():
+            sample = collection.find_one()
+            if sample:
+                # ObjectId를 문자열로 변환하여 표시
+                if "_id" in sample:
+                    sample["_id"] = str(sample["_id"])
+                print(f"  {name}: {sample}")
+            else:
+                print(f"  {name}: 데이터 없음")
+        
+        print("\n=============================")
+    except Exception as e:
+        print(f"MongoDB 디버그 중 오류 발생: {e}")
+        import traceback
+        traceback.print_exc()
