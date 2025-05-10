@@ -57,47 +57,33 @@ def load_role_data():
     if not is_mongo_connected():
         print("⚠️ MongoDB에 연결되지 않아 역할 데이터를 로드할 수 없습니다")
         return {}
-
-    result = {}
+    
     try:
-        print("🔄 역할 데이터 로드 시작...")
-        # 컬렉션이 존재하는지 확인
-        if "roles" not in db.list_collection_names():
-            print("⚠️ roles 컬렉션이 존재하지 않습니다")
-            return {}
-            
-        # 전체 문서 수 확인
+        print("🔍 역할 데이터 로드 시작")
         total_docs = roles_collection.count_documents({})
-        print(f"MongoDB에 총 {total_docs}개의 역할 설정 문서가 있습니다")
+        print(f"MongoDB에서 {total_docs}개의 역할 문서 발견")
         
-        # 모든 역할 설정 불러오기
+        result = {}
         cursor = roles_collection.find()
-        roles_count = 0
         
         for doc in cursor:
             try:
-                guild_id = doc["guild_id"]
-                first_role_id = doc["first_role_id"]
-                other_role_id = doc["other_role_id"]
+                # 명시적 타입 변환으로 일관성 유지
+                guild_id = int(doc["guild_id"])
+                first_role_id = int(doc["first_role_id"])
+                other_role_id = int(doc["other_role_id"])
                 
                 result[guild_id] = {
                     "first": first_role_id,
                     "other": other_role_id
                 }
-                roles_count += 1
-            except KeyError as e:
-                print(f"⚠️ 역할 문서에 필수 필드가 없습니다: {e}, 문서: {doc}")
+            except (KeyError, ValueError, TypeError) as e:
+                print(f"⚠️ 역할 데이터 처리 중 오류: {e}, 문서: {doc}")
                 continue
-            
-        print(f"✅ 역할 데이터 로드 완료: {roles_count}개 서버")
         
-        # 첫 몇개의 서버 정보 출력 (디버깅)
-        for i, (guild_id, data) in enumerate(list(result.items())[:3]):
-            print(f"  서버 {guild_id}: 첫째 역할={data['first']}, 기타 역할={data['other']}")
-            
         return result
     except Exception as e:
-        print(f"⚠️ 역할 데이터 로드 중 오류 발생: {e}")
+        print(f"⚠️ 역할 데이터 로드 중 오류: {e}")
         import traceback
         traceback.print_exc()
         return {}
@@ -124,71 +110,34 @@ def load_excluded_role_data():
     if not is_mongo_connected():
         print("⚠️ MongoDB에 연결되지 않아 제외 역할을 로드할 수 없습니다")
         return {}
-
-    result = {}
+    
     try:
-        print("🔄 제외 역할 데이터 로드 시작...")
-        # 컬렉션이 존재하는지 확인
-        if "excluded_roles" not in db.list_collection_names():
-            print("⚠️ excluded_roles 컬렉션이 존재하지 않습니다")
-            return {}
-            
-        # 전체 문서 수 확인
+        print("🔍 제외 역할 데이터 로드 시작")
         total_docs = excluded_roles_collection.count_documents({})
-        print(f"MongoDB에 총 {total_docs}개의 제외 역할 문서가 있습니다")
+        print(f"MongoDB에서 {total_docs}개의 제외 역할 문서 발견")
         
-        # 집계 쿼리를 사용하여 서버별 역할 목록 한번에 가져오기 (개선된 에러 처리)
-        try:
-            pipeline = [
-                {"$group": {"_id": "$guild_id", "role_ids": {"$push": "$role_id"}}}
-            ]
-            
-            # 결과 처리
-            for doc in excluded_roles_collection.aggregate(pipeline):
-                try:
-                    guild_id = doc["_id"]  # guild_id가 _id로 그룹화됨
-                    role_ids = doc["role_ids"]
-                    
-                    # 유효성 검사
-                    if not all(isinstance(role_id, int) for role_id in role_ids):
-                        print(f"⚠️ 서버 {guild_id}의 제외 역할 중 유효하지 않은 ID가 있습니다: {role_ids}")
-                        # 정수형만 필터링
-                        role_ids = [role_id for role_id in role_ids if isinstance(role_id, int)]
-                    
-                    result[guild_id] = role_ids
-                except KeyError as e:
-                    print(f"⚠️ 집계 문서에 필수 필드가 없습니다: {e}, 문서: {doc}")
-                    continue
-        except Exception as e:
-            print(f"⚠️ 집계 쿼리 실패, 개별 문서 방식으로 전환: {e}")
-            
-            # 집계 쿼리가 실패하면 개별 문서 방식으로 가져오기
-            docs = excluded_roles_collection.find()
-            for doc in docs:
-                try:
-                    guild_id = doc["guild_id"]
-                    role_id = doc["role_id"]
-                    
-                    if guild_id not in result:
-                        result[guild_id] = []
-                    
-                    result[guild_id].append(role_id)
-                except KeyError as e:
-                    print(f"⚠️ 문서에 필수 필드가 없습니다: {e}, 문서: {doc}")
-                    continue
-
-        # 로그 추가
-        guild_count = len(result)
-        role_count = sum(len(roles) for roles in result.values())
-        print(f"제외 역할 로드 완료: {guild_count}개 서버, 총 {role_count}개 역할")
-
-        # 처음 몇 개의 서버만 상세 정보 출력 (최대 3개)
-        for guild_id, roles in list(result.items())[:3]:
-            print(f"  서버 {guild_id}: {len(roles)}개 제외 역할 - {roles}")
-
+        # 서버별 제외 역할 ID 수동 집계 (pipeline 사용 대신)
+        result = {}
+        cursor = excluded_roles_collection.find()
+        
+        for doc in cursor:
+            try:
+                # 명시적 타입 변환으로 일관성 유지
+                guild_id = int(doc["guild_id"])
+                role_id = int(doc["role_id"])
+                
+                if guild_id not in result:
+                    result[guild_id] = []
+                
+                result[guild_id].append(role_id)
+            except (KeyError, ValueError, TypeError) as e:
+                print(f"⚠️ 제외 역할 데이터 처리 중 오류: {e}, 문서: {doc}")
+                continue
+        
+        print(f"제외 역할 로드 완료: {len(result)}개 서버")
         return result
     except Exception as e:
-        print(f"⚠️ 제외 역할 로드 중 오류 발생: {e}")
+        print(f"⚠️ 제외 역할 데이터 로드 중 오류: {e}")
         import traceback
         traceback.print_exc()
         return {}
@@ -529,42 +478,44 @@ def delete_auth_code(code):
 
 # 특정 서버의 역할 데이터만 로드하는 함수
 def get_guild_role_data(guild_id):
+    """특정 서버의 역할 데이터를 로드합니다"""
     if not is_mongo_connected():
         print(f"⚠️ MongoDB에 연결되지 않아 서버 {guild_id}의 역할 데이터를 로드할 수 없습니다")
         return None
-
+    
     try:
         doc = roles_collection.find_one({"guild_id": guild_id})
         if doc:
             return {
-                "first": doc["first_role_id"],
-                "other": doc["other_role_id"]
+                "first": int(doc["first_role_id"]),
+                "other": int(doc["other_role_id"])
             }
-        else:
-            print(f"서버 {guild_id}의 역할 데이터가 없습니다")
-            return None
+        return None
     except Exception as e:
-        print(f"⚠️ 서버 {guild_id}의 역할 데이터 로드 중 오류 발생: {e}")
+        print(f"⚠️ 서버 {guild_id}의 역할 데이터 로드 중 오류: {e}")
         return None
 
 # 특정 서버의 제외 역할 데이터만 로드하는 함수
 def get_guild_excluded_roles(guild_id):
+    """특정 서버의 제외 역할을 로드합니다"""
     if not is_mongo_connected():
-        print(f"⚠️ MongoDB에 연결되지 않아 서버 {guild_id}의 제외 역할 데이터를 로드할 수 없습니다")
-        return None
-
+        print(f"⚠️ MongoDB에 연결되지 않아 서버 {guild_id}의 제외 역할을 로드할 수 없습니다")
+        return []
+    
     try:
         cursor = excluded_roles_collection.find({"guild_id": guild_id})
-        excluded_roles = [doc["role_id"] for doc in cursor]
+        excluded_roles = []
         
-        if excluded_roles:
-            print(f"서버 {guild_id}의 제외 역할 {len(excluded_roles)}개 로드됨")
-            return excluded_roles
-        else:
-            print(f"서버 {guild_id}의 제외 역할 데이터가 없습니다")
-            return []
+        for doc in cursor:
+            try:
+                excluded_roles.append(int(doc["role_id"]))
+            except (KeyError, ValueError, TypeError):
+                continue
+                
+        print(f"서버 {guild_id}의 제외 역할 {len(excluded_roles)}개 로드")
+        return excluded_roles
     except Exception as e:
-        print(f"⚠️ 서버 {guild_id}의 제외 역할 데이터 로드 중 오류 발생: {e}")
+        print(f"⚠️ 서버 {guild_id}의 제외 역할 데이터 로드 중 오류: {e}")
         return []
 
 # MongoDB 디버그 함수 추가

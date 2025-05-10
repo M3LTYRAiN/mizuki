@@ -146,7 +146,7 @@ async def 집계(inter: disnake.ApplicationCommandInteraction, start_date: str, 
                 update_role_streak(guild_id, user_id, role_type)
 
         # 진행 상황 알림
-        await inter.edit_original_response(content="이미지를 생성 중인 것이다... 🎨")
+        await inter.edit_original_response(content="결과를 확인하고 있는 것이다... ")
 
         # 이미지 생성
         image = await create_ranking_image(

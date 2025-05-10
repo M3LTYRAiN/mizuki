@@ -146,84 +146,79 @@ async def on_ready():
         # MongoDB에서 데이터 로드
         if db.is_mongo_connected():
             print("MongoDB 연결 확인됨, 데이터 로드 시작...")
-            try:
-                db.debug_mongodb_data()  # MongoDB 상태 확인
-            except Exception as e:
-                print(f"디버그 데이터 확인 중 오류: {e}")
             
-            # 데이터 로드 - 오류 발생해도 진행
-            try:
-                # 1. 역할 설정 데이터
-                loaded_roles = db.load_role_data()
+            # 1. 역할 설정 데이터
+            print("\n역할 설정 데이터 로드 중...")
+            loaded_roles = db.load_role_data()
+            print(f"로드된 역할 데이터: {loaded_roles}")
+            
+            if loaded_roles:
+                # guild_id를 정수형으로 확인
+                fixed_roles = {}
+                for guild_id, role_data in loaded_roles.items():
+                    # MongoDB에서 문자열로 저장된 경우를 처리
+                    if isinstance(guild_id, str) and guild_id.isdigit():
+                        guild_id = int(guild_id)
+                    fixed_roles[guild_id] = role_data
                 
-                # 데이터 검증
-                if loaded_roles and isinstance(loaded_roles, dict):
-                    server_roles = loaded_roles
-                    print(f"✅ 역할 데이터 로드 성공: {len(server_roles)}개 서버")
-                    
-                    # 일부 데이터 출력
-                    sample_count = min(3, len(server_roles))
-                    sample_guilds = list(server_roles.keys())[:sample_count]
-                    for guild_id in sample_guilds:
-                        print(f"  서버 {guild_id}: 첫째 역할={server_roles[guild_id].get('first')}, 기타 역할={server_roles[guild_id].get('other')}")
-                else:
-                    print(f"⚠️ 역할 데이터 형식 오류 또는 비어있음: {type(loaded_roles)}")
-            except Exception as e:
-                print(f"❌ 역할 데이터 로드 중 오류: {e}")
-                import traceback
-                traceback.print_exc()
+                server_roles = fixed_roles
+                print(f"역할 데이터 로드 완료: {len(server_roles)}개 서버")
+                print(f"샘플 데이터: {list(server_roles.items())[:3]}")
             
-            try:
-                # 2. 제외 역할 데이터
-                loaded_excluded_roles = db.load_excluded_role_data()
+            # 2. 제외 역할 데이터
+            print("\n제외 역할 데이터 로드 중...")
+            loaded_excluded_roles = db.load_excluded_role_data()
+            print(f"로드된 제외 역할 데이터: {loaded_excluded_roles}")
+            
+            if loaded_excluded_roles:
+                # guild_id를 정수형으로 확인
+                fixed_excluded_roles = {}
+                for guild_id, roles in loaded_excluded_roles.items():
+                    # MongoDB에서 문자열로 저장된 경우를 처리
+                    if isinstance(guild_id, str) and guild_id.isdigit():
+                        guild_id = int(guild_id)
+                    fixed_excluded_roles[guild_id] = roles
                 
-                # 데이터 검증
-                if loaded_excluded_roles and isinstance(loaded_excluded_roles, dict):
-                    server_excluded_roles = loaded_excluded_roles
-                    print(f"✅ 제외 역할 데이터 로드 성공: {len(server_excluded_roles)}개 서버")
-                    
-                    # 일부 데이터 출력
-                    sample_count = min(3, len(server_excluded_roles))
-                    sample_guilds = list(server_excluded_roles.keys())[:sample_count]
-                    for guild_id in sample_guilds:
-                        print(f"  서버 {guild_id}: 제외 역할 {len(server_excluded_roles[guild_id])}개")
-                else:
-                    print(f"⚠️ 제외 역할 데이터 형식 오류 또는 비어있음: {type(loaded_excluded_roles)}")
-            except Exception as e:
-                print(f"❌ 제외 역할 데이터 로드 중 오류: {e}")
-                import traceback
-                traceback.print_exc()
+                server_excluded_roles = fixed_excluded_roles
+                print(f"제외 역할 데이터 로드 완료: {len(server_excluded_roles)}개 서버")
+                print(f"샘플 데이터: {list(server_excluded_roles.items())[:3]}")
             
-            # ... 나머지 데이터 로드 (채팅 카운트 등) ...
-            
-            # 현재 참여 중인 모든 서버에 대해 추가 데이터 확인 (중요!)
-            print("\n현재 참여 중인 모든 서버에 대해 데이터 확인 중...")
+            # 3. 각 서버별 데이터 재검증 (중요!)
+            print("\n참여 중인 모든 서버 데이터 검증 중...")
             for guild in bot.guilds:
-                try:
-                    # 이 서버에 역할 데이터가 없다면 다시 로드 시도
-                    if guild.id not in server_roles:
-                        role_data = db.get_guild_role_data(guild.id)
-                        if role_data:
-                            server_roles[guild.id] = role_data
-                            print(f"  서버 {guild.id}({guild.name})의 역할 데이터 추가 로드 완료")
-                    
-                    # 이 서버에 제외 역할 데이터가 없다면 다시 로드 시도
-                    if guild.id not in server_excluded_roles:
-                        excluded_roles = db.get_guild_excluded_roles(guild.id)
-                        if excluded_roles:
-                            server_excluded_roles[guild.id] = excluded_roles
-                            print(f"  서버 {guild.id}({guild.name})의 제외 역할 데이터 추가 로드 완료")
-                except Exception as e:
-                    print(f"  서버 {guild.id}({guild.name}) 데이터 추가 확인 중 오류: {e}")
-            
-            print("\n==== 데이터 로드 완료 ====")
-            print(f"로드된 역할 설정 서버: {len(server_roles)}개")
-            print(f"로드된 제외 역할 서버: {len(server_excluded_roles)}개")
-            print(f"로드된 채팅 카운트 서버: {len(server_chat_counts)}개")
-        else:
-            print("⚠️ MongoDB에 연결되어 있지 않습니다. 봇이 제대로 작동하지 않을 수 있습니다.")
+                guild_id = guild.id
+                print(f"\n서버 {guild_id} ({guild.name}) 데이터 확인:")
+                
+                # 이 서버의 역할 데이터 확인
+                if guild_id in server_roles:
+                    print(f"✅ 역할 데이터 있음: {server_roles[guild_id]}")
+                else:
+                    print("❌ 역할 데이터 없음, DB에서 직접 로드 시도...")
+                    role_data = db.get_guild_role_data(guild_id)
+                    if role_data:
+                        server_roles[guild_id] = role_data
+                        print(f"✓ DB에서 직접 로드 성공: {role_data}")
+                    else:
+                        print("- DB에도 데이터 없음")
+                
+                # 이 서버의 제외 역할 데이터 확인
+                if guild_id in server_excluded_roles:
+                    print(f"✅ 제외 역할 데이터 있음: {len(server_excluded_roles[guild_id])}개")
+                else:
+                    print("❌ 제외 역할 데이터 없음, DB에서 직접 로드 시도...")
+                    excluded_roles = db.get_guild_excluded_roles(guild_id)
+                    if excluded_roles:
+                        server_excluded_roles[guild_id] = excluded_roles
+                        print(f"✓ DB에서 직접 로드 성공: {len(excluded_roles)}개")
+                    else:
+                        print("- DB에도 데이터 없음")
         
-        print(f"\n✅ 봇이 준비되었습니다! (핑: {round(bot.latency * 1000)}ms)")
+        # 최종 로드 결과 확인
+        print("\n==== 데이터 로드 결과 ====")
+        print(f"역할 설정 서버: {len(server_roles)}개")
+        print(f"제외 역할 서버: {len(server_excluded_roles)}개")
+        print(f"채팅 카운트 서버: {len(server_chat_counts)}개")
+        print("=========================\n")
         
     except Exception as e:
         print(f"Error in on_ready: {e}")
