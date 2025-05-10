@@ -15,19 +15,17 @@ COPY requirements.txt .
 # 의존성 설치 (중복 제거)
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 프로젝트 파일 복사
-COPY . .
-
-# 각 특수 디렉토리에 대해 볼륨 마운트 지점 생성
+# 1. 먼저 필요한 디렉토리만 생성
 RUN mkdir -p /app/OTF /app/im
 
-# 폰트 및 이미지 파일 복사 (오류 방지를 위해 쉘 명령어로 대체)
-# 원래 코드: COPY OTF/ /app/OTF/ 2>/dev/null || true
-# 원래 코드: COPY im/ /app/im/ 2>/dev/null || true
+# 2. 특정 폴더 먼저 복사
+COPY OTF/ /app/OTF/
+COPY im/ /app/im/
 
-# 대체 방법 1: 조건부 복사 스크립트 사용
-RUN if [ -d "OTF" ] && [ "$(ls -A OTF 2>/dev/null)" ]; then cp -r OTF/* /app/OTF/; fi && \
-    if [ -d "im" ] && [ "$(ls -A im 2>/dev/null)" ]; then cp -r im/* /app/im/; fi
+# 3. 나머지 파일 복사 (이미 복사된 파일 제외)
+COPY *.py /app/
+COPY requirements.txt /app/
+# 나머지 필요한 파일들...
 
 # 디렉토리 권한 설정 (실행 권한 추가)
 RUN chmod -R 755 /app/OTF /app/im
@@ -60,6 +58,4 @@ ENV PYTHONWARNINGS="ignore::DeprecationWarning:disnake.http"
 # 로케일 설정 추가
 ENV LANG C.UTF-8
 ENV LC_ALL C.UTF-8
-
-# 봇 실행
-CMD ["python", "bot.py"]
+# 봇 실행CMD ["python", "bot.py"]
