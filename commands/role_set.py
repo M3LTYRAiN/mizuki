@@ -15,6 +15,12 @@ async def 역할설정(inter: disnake.ApplicationCommandInteraction, first_role:
     # MongoDB에 저장
     try:
         if db.is_mongo_connected():
+            # 저장 전 기존 데이터 확인
+            existing_data = db.get_guild_role_data(guild_id)
+            if existing_data:
+                print(f"[역할설정] 기존 설정 덮어쓰기: {existing_data}")
+            
+            # 데이터 저장
             db.save_role_data(guild_id, first_role.id, other_role.id)
             print(f"✅ [역할설정] MongoDB 저장 성공 - 서버: {guild_id}")
             
@@ -22,6 +28,8 @@ async def 역할설정(inter: disnake.ApplicationCommandInteraction, first_role:
             saved_data = db.get_guild_role_data(guild_id)
             if saved_data:
                 print(f"✓ 저장된 데이터 확인: {saved_data}")
+                # 메모리 캐시도 확인
+                print(f"✓ 메모리 캐시 확인: {server_roles.get(guild_id)}")
             else:
                 print("⚠️ 저장 후 데이터를 확인할 수 없습니다")
         else:

@@ -4,6 +4,7 @@ from disnake.ui import Button, View
 from bot import bot, server_chat_counts, server_excluded_roles
 import database as db
 import pytz  # Add this import for timezone handling
+from collections import Counter  # Counter 명시적 임포트 추가
 
 class LeaderboardView(View):
     def __init__(self, author_id, guild_id, current_page=1):  # author_id 추가
@@ -129,10 +130,115 @@ class LeaderboardView(View):
 @bot.slash_command(name="리더보드", description="서버의 채팅 순위 리더보드를 보여주는 것이다.")
 async def 리더보드(inter: disnake.ApplicationCommandInteraction):
     guild_id = inter.guild.id
-    if guild_id not in server_chat_counts or not server_chat_counts[guild_id]:
-        await inter.response.send_message("❌ 채팅 데이터가 없는 것이다.", ephemeral=True)
+    
+    # 데이터 확인 로직을 개선하여 더 정확한 정보 제공
+    has_chat_data = False
+    
+    # MongoDB 연결 확인
+    if not db.is_mongo_connected():
+        await inter.response.send_message("⚠️ MongoDB에 연결되어 있지 않아 채팅 데이터를 확인할 수 없는 것이다.", ephemeral=True)
         return
+    
+    # 메모리 캐시 디버깅
+    print(f"[리더보드] 서버 상태 확인:")
+    print(f"  - 현재 메모리에 있는 서버 목록: {list(server_chat_counts.keys())}")
+    print(f"  - 요청한 서버 ID: {guild_id}")
+    
+    # 1. 메모리 캐시 확인
+    if guild_id in server_chat_counts and server_chat_counts[guild_id]:
+        has_chat_data = True
+        chat_count = len(server_chat_counts[guild_id])
+        print(f"[리더보드] 서버 {guild_id}의 메모리에 채팅 데이터 있음: {chat_count}명의 사용자")
+        
+        # 메모리에 있는 데이터 샘플 출력 (첫 3개)
+        top_users = sorted(server_chat_counts[guild_id].items(), key=lambda x: x[1], reverse=True)[:3]
+        for user_id, count in top_users:
+            print(f"  - 사용자 {user_id}: {count}회")
+    else:
+        print(f"[리더보드] 서버 {guild_id}의 메모리에 채팅 데이터 없음, MongoDB에서 확인 시도")
+        
+        # 2. MongoDB에서 직접 데이터 확인
+        try:
+            # 해당 길드의 채팅 데이터가 있는지 확인
+            chat_count = db.chat_counts_collection.count_documents({"guild_id": guild_id})
+            print(f"[리더보드] MongoDB에서 서버 {guild_id}의 문서 수: {chat_count}")
+            
+            if chat_count > 0:
+                has_chat_data = True
+                print(f"[리더보드] MongoDB에서 서버 {guild_id}의 채팅 데이터 확인: {chat_count}개 항목")
+                
+                # 데이터를 메모리에 로드 (Counter 객체 명시적 생성)
+                if guild_id not in server_chat_counts:
+                    server_chat_counts[guild_id] = Counter()
+                    
+                cursor = db.chat_counts_collection.find({"guild_id": guild_id})
+                loaded_count = 0
+                
+                for doc in cursor:
+                    user_id = doc.get("user_id")
+                    count = doc.get("count", 0)
+                    
+                    if user_id:  # user_id가 있는 경우만 처리
+                        server_chat_counts[guild_id][user_id] = count
+                        loaded_count += 1
+                
+                print(f"[리더보드] MongoDB에서 서버 {guild_id}의 채팅 데이터 {loaded_count}개 로드됨")
+                
+                # 로딩 후 다시 확인
+                if len(server_chat_counts[guild_id]) > 0:
+                    print(f"[리더보드] 데이터 로드 확인: {len(server_chat_counts[guild_id])}개 항목")
+                    has_chat_data = True
+                else:
+                    print(f"[리더보드] 데이터 로드 실패: 0개 항목")
+                    has_chat_data = False
+            else:
+                print(f"[리더보드] MongoDB에도 서버 {guild_id}의 채팅 데이터가 없음")
+        except Exception as e:
+            print(f"[리더보드] MongoDB 조회 중 오류: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    # 채팅 데이터가 없는 경우
+    if not has_chat_data or guild_id not in server_chat_counts or not server_chat_counts[guild_id]:
+        # 디버그 정보 수집
+        debug_info = []
+        debug_info.append(f"서버 ID: {guild_id}")
+        debug_info.append(f"메모리 캐시 포함 여부: {'O' if guild_id in server_chat_counts else 'X'}")
+        
+        try:
+            if guild_id in server_chat_counts:
+                debug_info.append(f"메모리에 있는 항목 수: {len(server_chat_counts[guild_id])}")
+            
+            # 직접 DB에서 카운트 확인
+            db_count = db.chat_counts_collection.count_documents({"guild_id": guild_id})
+            debug_info.append(f"DB에 있는 항목 수: {db_count}")
+        except Exception as e:
+            debug_info.append(f"디버그 정보 수집 중 오류: {e}")
+        
+        debug_text = "\n".join(debug_info)
+        print(f"[리더보드] 디버그 정보:\n{debug_text}")
+        
+        # 더 자세한 오류 메시지 제공
+        await inter.response.send_message(
+            "❌ 채팅 데이터가 없는 것이다. 다음 사항을 확인하는 것이다:\n"
+            "1. 봇이 채팅을 집계한 적이 있는지\n"
+            "2. 모든 채팅이 제외 역할에 의해 무시되지 않는지\n"
+            "3. 봇이 재시작된 후 채팅이 있었는지\n\n"
+            f"디버그 정보: ```\n{debug_text}\n```",
+            ephemeral=True
+        )
+        return
+    
+    # 클래스가 Counter가 맞는지 확인
+    counter_class = type(server_chat_counts[guild_id]).__name__
+    print(f"[리더보드] server_chat_counts[{guild_id}]의 타입: {counter_class}")
+    
+    # 만약 Counter 객체가 아니라면 변환
+    if counter_class != "Counter":
+        print(f"[리더보드] Counter 객체가 아니므로 변환합니다: {counter_class}")
+        server_chat_counts[guild_id] = Counter(server_chat_counts[guild_id])
 
-    view = LeaderboardView(inter.author.id, guild_id)  # author_id 전달
+    # 데이터가 있는 경우 리더보드 표시 계속
+    view = LeaderboardView(inter.author.id, guild_id)
     await inter.response.send_message("리더보드를 불러오는 중인 것이다...", view=view)
     await view.update_page(inter)
