@@ -19,15 +19,18 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # 각 특수 디렉토리에 대해 볼륨 마운트 지점 생성
-RUN mkdir -p /app/OTF /app/im /app/manual
+RUN mkdir -p /app/OTF /app/im
 
-# 폰트 및 이미지 파일을 직접 복사 (로컬에서 파일이 있어야 함)
-COPY OTF/ /app/OTF/
-COPY im/ /app/im/
-COPY manual/ /app/manual/
+# 폰트 및 이미지 파일 복사 (오류 방지를 위해 쉘 명령어로 대체)
+# 원래 코드: COPY OTF/ /app/OTF/ 2>/dev/null || true
+# 원래 코드: COPY im/ /app/im/ 2>/dev/null || true
+
+# 대체 방법 1: 조건부 복사 스크립트 사용
+RUN if [ -d "OTF" ] && [ "$(ls -A OTF 2>/dev/null)" ]; then cp -r OTF/* /app/OTF/; fi && \
+    if [ -d "im" ] && [ "$(ls -A im 2>/dev/null)" ]; then cp -r im/* /app/im/; fi
 
 # 디렉토리 권한 설정 (실행 권한 추가)
-RUN chmod -R 755 /app/OTF /app/im /app/manual
+RUN chmod -R 755 /app/OTF /app/im
 
 # 디버깅: 파일 존재 여부 확인
 RUN echo "=== 폰트 파일 확인 ===" && \
@@ -36,12 +39,10 @@ RUN echo "=== 폰트 파일 확인 ===" && \
     find /app -name "*.png"
 
 # 필요한 디렉토리 생성 확인
-RUN mkdir -p /app/manual /app/OTF /app/im
+RUN mkdir -p /app/OTF /app/im
 
 # 디렉토리 내용 확인 (디버깅용)
-RUN echo "=== 수동 디렉토리 확인 ===" && \
-    ls -la /app/manual && \
-    echo "=== 폰트 디렉토리 확인 ===" && \
+RUN echo "=== 폰트 디렉토리 확인 ===" && \
     ls -la /app/OTF && \
     echo "=== 이미지 디렉토리 확인 ===" && \
     ls -la /app/im

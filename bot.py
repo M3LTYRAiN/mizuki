@@ -228,8 +228,8 @@ async def on_ready():
 # 필수 파일/폴더 확인 함수 추가
 def check_required_files():
     """필수 파일 및 폴더 존재 확인"""
-    # 필수 디렉토리 목록
-    required_dirs = ["OTF", "im", "manual"]
+    # 필수 디렉토리 목록 (manual 제거)
+    required_dirs = ["OTF", "im"]
     
     print("\n==== 필수 파일/폴더 확인 ====")
     
