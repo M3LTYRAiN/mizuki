@@ -14,12 +14,15 @@ class LeaderboardView(View):
         self.author_id = author_id  # 명령어 사용자 ID 저장
         self.chat_counts = server_chat_counts[self.guild_id]
         sorted_chatters = sorted(self.chat_counts.items(), key=lambda x: x[1], reverse=True)
-        self.max_page = (len(sorted_chatters) - 1) // 50 + 1
+        # 페이지당 25명으로 변경 (50명에서)
+        self.items_per_page = 25
+        self.max_page = (len(sorted_chatters) - 1) // self.items_per_page + 1
         
         # 명령어 사용자의 순위 찾기
         self.user_rank = next((i + 1 for i, (uid, _) in enumerate(sorted_chatters) if uid == author_id), None)
         if self.user_rank:
-            self.user_page = (self.user_rank - 1) // 50 + 1
+            # 페이지당 25명으로 계산 (50명에서 변경)
+            self.user_page = (self.user_rank - 1) // self.items_per_page + 1
         else:
             self.user_page = None
 
@@ -27,8 +30,9 @@ class LeaderboardView(View):
         chat_counts = self.chat_counts
         sorted_chatters = sorted(chat_counts.items(), key=lambda x: x[1], reverse=True)
 
-        start_index = (self.current_page - 1) * 50
-        end_index = self.current_page * 50
+        # 페이지당 25명으로 변경 (50명에서)
+        start_index = (self.current_page - 1) * self.items_per_page
+        end_index = self.current_page * self.items_per_page
         page_data = sorted_chatters[start_index:end_index]
 
         embed = disnake.Embed(title="리더보드", color=disnake.Color.green())
