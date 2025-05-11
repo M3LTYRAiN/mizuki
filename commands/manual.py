@@ -82,7 +82,6 @@ async def 메뉴얼(inter: disnake.ApplicationCommandInteraction):
             await button_inter.response.defer(ephemeral=True)
             
             try:
-                # 서버 정보 임베드 생성
                 guild_id = button_inter.guild.id
                 guild = button_inter.guild
                 
@@ -93,23 +92,33 @@ async def 메뉴얼(inter: disnake.ApplicationCommandInteraction):
                 )
                 
                 # 서버 기본 정보 (모두 볼 수 있도록 추가)
-                created_at_kst = guild.created_at.replace(tzinfo=datetime.timezone.utc).astimezone(pytz.timezone('Asia/Seoul'))
-                info_embed.add_field(
-                    name="📅 서버 생성일",
-                    value=created_at_kst.strftime("%Y년 %m월 %d일"),
-                    inline=True
-                )
+                try:
+                    created_at_kst = guild.created_at.replace(tzinfo=datetime.timezone.utc).astimezone(pytz.timezone('Asia/Seoul'))
+                    info_embed.add_field(
+                        name="📅 서버 생성일",
+                        value=created_at_kst.strftime("%Y년 %m월 %d일"),
+                        inline=True
+                    )
+                except AttributeError:
+                    info_embed.add_field(
+                        name="📅 서버 생성일",
+                        value="정보를 불러올 수 없습니다",
+                        inline=True
+                    )
                 
                 # 서버 통계 정보
-                total_members = len(guild.members)
-                bot_count = sum(1 for member in guild.members if member.bot)
-                human_count = total_members - bot_count
-                
-                stats = f"👥 총 멤버: {total_members}명\n" \
-                       f"👤 사용자: {human_count}명\n" \
-                       f"🤖 봇: {bot_count}개"
-                
-                info_embed.add_field(name="📊 서버 통계", value=stats, inline=True)
+                try:
+                    total_members = guild.member_count if hasattr(guild, 'member_count') else len(guild.members)
+                    bot_count = sum(1 for member in guild.members if member.bot)
+                    human_count = total_members - bot_count
+                    
+                    stats = f"👥 총 멤버: {total_members}명\n" \
+                           f"👤 사용자: {human_count}명\n" \
+                           f"🤖 봇: {bot_count}개"
+                    
+                    info_embed.add_field(name="📊 서버 통계", value=stats, inline=True)
+                except Exception as e:
+                    info_embed.add_field(name="📊 서버 통계", value="정보를 불러올 수 없습니다", inline=True)
                 
                 # 채널 정보 추가
                 text_channels = len(guild.text_channels)
@@ -205,28 +214,30 @@ async def 메뉴얼(inter: disnake.ApplicationCommandInteraction):
                             oldest_date = oldest_message[0].get("timestamp")
                             newest_date = newest_message[0].get("timestamp")
                             
-                            oldest_kst = oldest_date.astimezone(pytz.timezone('Asia/Seoul'))
-                            newest_kst = newest_date.astimezone(pytz.timezone('Asia/Seoul'))
-                            
-                            # 요청된 형식(yyyymmdd~yyyymmdd)으로 포맷팅
-                            chat_date_range = f"{oldest_kst.strftime('%Y%m%d')}~{newest_kst.strftime('%Y%m%d')}"
-                            
-                            # 추가 정보로 가독성 있는 날짜도 표시
-                            chat_date_range += f"\n({oldest_kst.strftime('%Y년 %m월 %d일')} ~ {newest_kst.strftime('%Y년 %m월 %d일')})"
-                            
-                            # 총 메시지 수 표시
-                            total_messages = db.messages_collection.count_documents(
-                                {"guild_id": guild_id},
-                                limit=10000,  # 대략적인 숫자만 필요하므로 제한
-                                maxTimeMS=3000  # 시간 제한 3초
-                            )
-                            # 숫자가 너무 크면 "10,000+" 형태로 표시
-                            if total_messages >= 10000:
-                                message_count_str = "10,000+"
-                            else:
-                                message_count_str = f"{total_messages:,}"
-                            
-                            chat_date_range += f"\n총 {message_count_str}개 메시지"
+                            # timestamp가 실제로 존재하는지 확인
+                            if oldest_date and newest_date:
+                                oldest_kst = oldest_date.astimezone(pytz.timezone('Asia/Seoul'))
+                                newest_kst = newest_date.astimezone(pytz.timezone('Asia/Seoul'))
+                                
+                                # 요청된 형식(yyyymmdd~yyyymmdd)으로 포맷팅
+                                chat_date_range = f"{oldest_kst.strftime('%Y%m%d')}~{newest_kst.strftime('%Y%m%d')}"
+                                
+                                # 추가 정보로 가독성 있는 날짜도 표시
+                                chat_date_range += f"\n({oldest_kst.strftime('%Y년 %m월 %d일')} ~ {newest_kst.strftime('%Y년 %m월 %d일')})"
+                                
+                                # 총 메시지 수 표시
+                                total_messages = db.messages_collection.count_documents(
+                                    {"guild_id": guild_id},
+                                    limit=10000,  # 대략적인 숫자만 필요하므로 제한
+                                    maxTimeMS=3000  # 시간 제한 3초
+                                )
+                                # 숫자가 너무 크면 "10,000+" 형태로 표시
+                                if total_messages >= 10000:
+                                    message_count_str = "10,000+"
+                                else:
+                                    message_count_str = f"{total_messages:,}"
+                                
+                                chat_date_range += f"\n총 {message_count_str}개 메시지"
                     except Exception as e:
                         chat_date_range = f"정보 조회 실패: {type(e).__name__}"
                         print(f"채팅 기록 조회 오류: {e}")
@@ -244,23 +255,35 @@ async def 메뉴얼(inter: disnake.ApplicationCommandInteraction):
                 
                 # 임베드에 서버 아이콘 추가
                 if guild.icon:
-                    info_embed.set_thumbnail(url=guild.icon.url)
+                    try:
+                        info_embed.set_thumbnail(url=guild.icon.url)
+                    except AttributeError:
+                        pass  # 아이콘 URL을 가져올 수 없으면 무시
                     
                 # 서버 배너가 있으면 추가
                 if guild.banner:
-                    info_embed.set_image(url=guild.banner.url)
+                    try:
+                        info_embed.set_image(url=guild.banner.url)
+                    except AttributeError:
+                        pass  # 배너 URL을 가져올 수 없으면 무시
                 
                 # 응답 지연이 설정되어 있으므로 followup 메시지 사용
                 await button_inter.followup.send(embed=info_embed, ephemeral=True)
                 
             except Exception as e:
                 # 오류 발생 시 간단한 메시지로 대체
-                error_message = f"서버 정보를 불러오는 중 오류가 발생했습니다: {type(e).__name__}"
+                error_message = f"서버 정보를 불러오는 중 오류가 발생했습니다: {type(e).__name__} - {str(e)}"
                 print(f"서버 정보 버튼 오류: {e}")
-                if not button_inter.response.is_done():
-                    await button_inter.response.send_message(error_message, ephemeral=True)
-                else:
-                    await button_inter.followup.send(error_message, ephemeral=True)
+                
+                # 스택 트레이스 로깅 (디버깅 용)
+                import traceback
+                traceback.print_exc()
+                
+                # 사용자에게 간단한 오류 메시지 전송
+                await button_inter.followup.send(
+                    "❌ 서버 정보를 불러오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.", 
+                    ephemeral=True
+                )
     
     # 뷰와 함께 메뉴얼 전송
     await inter.response.send_message(embed=embed, view=ManualView())

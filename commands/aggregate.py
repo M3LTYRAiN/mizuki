@@ -55,13 +55,28 @@ print(f"Python 모듈 경로: {sys.path}")
 @commands.has_permissions(administrator=True)
 async def 집계(inter: disnake.ApplicationCommandInteraction, start_date: str, end_date: str):
     try:
-        # 초기 응답 지연 (15초 타임아웃)
         await inter.response.defer(ephemeral=False, with_message=True)
 
         guild_id = inter.guild.id
         
+        # 역할 설정 확인 및 로드 시도
         if guild_id not in server_roles:
-            await inter.edit_original_response(content="❌ 역할이 설정되지 않았습니다. /역할설정 명령어를 사용하는 것이다.")
+            print(f"[집계] 서버 {guild_id}의 역할 데이터가 메모리에 없음. DB에서 로드 시도.")
+            if db.is_mongo_connected():
+                role_data_from_db = db.get_guild_role_data(guild_id)
+                if role_data_from_db:
+                    server_roles[guild_id] = role_data_from_db
+                    print(f"[집계] DB에서 역할 데이터 로드 성공: {role_data_from_db}")
+                else:
+                    await inter.edit_original_response(content="❌ 역할이 설정되지 않았습니다. /역할설정 명령어를 사용하는 것이다.")
+                    return
+            else:
+                await inter.edit_original_response(content="❌ DB 연결 오류. 역할 설정을 확인할 수 없습니다.")
+                return
+        
+        # 다시 한번 확인
+        if guild_id not in server_roles:
+            await inter.edit_original_response(content="❌ 역할이 설정되지 않았습니다. /역할설정 명령어를 사용하는 것이다. (재확인 실패)")
             return
 
         # KST 시간대 설정
