@@ -60,27 +60,42 @@ def load_role_data():
     
     try:
         print("🔍 역할 데이터 로드 시작")
-        total_docs = roles_collection.count_documents({})
-        print(f"MongoDB에서 {total_docs}개의 역할 문서 발견")
-        
         result = {}
-        cursor = roles_collection.find()
         
+        # MongoDB에서 현재 컬렉션 항목 수 조회
+        total_docs = roles_collection.count_documents({})
+        print(f"🔢 MongoDB에서 {total_docs}개의 역할 문서 발견")
+        
+        # 모든 문서 조회
+        cursor = roles_collection.find()
+        loaded_count = 0
+        
+        print("🔄 역할 데이터 상세 로그:")
         for doc in cursor:
             try:
-                # 명시적 타입 변환으로 일관성 유지
-                guild_id = int(doc["guild_id"])
-                first_role_id = int(doc["first_role_id"])
-                other_role_id = int(doc["other_role_id"])
+                # 원본 데이터 출력
+                print(f"  - 원본 문서: {doc}")
+                
+                # 명시적 타입 변환 - 문자열이든 정수든 정수로 통일
+                try:
+                    guild_id = int(doc["guild_id"])
+                    first_role_id = int(doc["first_role_id"])
+                    other_role_id = int(doc["other_role_id"])
+                except (ValueError, TypeError):
+                    print(f"  ❌ ID 변환 실패: {doc}")
+                    continue
                 
                 result[guild_id] = {
                     "first": first_role_id,
                     "other": other_role_id
                 }
+                loaded_count += 1
+                print(f"  ✅ 변환된 데이터: 서버 {guild_id}, 역할: {result[guild_id]}")
             except (KeyError, ValueError, TypeError) as e:
-                print(f"⚠️ 역할 데이터 처리 중 오류: {e}, 문서: {doc}")
+                print(f"  ⚠️ 역할 데이터 처리 중 오류: {e}, 문서: {doc}")
                 continue
-        
+                
+        print(f"🔄 총 {loaded_count}개 역할 데이터 로드 완료")
         return result
     except Exception as e:
         print(f"⚠️ 역할 데이터 로드 중 오류: {e}")
