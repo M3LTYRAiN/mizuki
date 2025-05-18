@@ -82,31 +82,67 @@ async def 집계(inter: disnake.ApplicationCommandInteraction, start_date: str, 
         # KST 시간대 설정
         kst = pytz.timezone('Asia/Seoul')
         today = datetime.datetime.now(kst)
+        
+        start_datetime_obj_kst = None
+        end_datetime_obj_kst = None
 
-        # 't' 입력 처리
+        # 시작 날짜 처리
         if start_date.lower() == 't':
-            start_date = today.strftime("%Y%m%d")
+            start_datetime_obj_kst = today
+        elif start_date.lower() == 'd':
+            last_aggregate_db_utc = db.get_last_aggregate_date(guild_id)
+            if last_aggregate_db_utc:
+                start_datetime_obj_kst = last_aggregate_db_utc.astimezone(kst)
+                print(f"[집계] 'd' 옵션 사용 (시작): 마지막 집계 시간 {start_datetime_obj_kst.strftime('%Y%m%d %H:%M:%S')}")
+            else:
+                await inter.edit_original_response(
+                    content="❌ 'd' 옵션을 사용하려면 이전에 집계 기록이 있어야 하는 것이다."
+                )
+                return
+        else:
+            try:
+                start_datetime_obj_kst = kst.localize(datetime.datetime.strptime(start_date, "%Y%m%d").replace(hour=0, minute=0, second=0))
+            except ValueError:
+                await inter.edit_original_response(
+                    content="❌ 시작 날짜 형식이 잘못되었습니다. yyyyMMdd, 't', 또는 'd'로 입력하는 것이다."
+                )
+                return
+        
+        # 종료 날짜 처리
         if end_date.lower() == 't':
-            end_date = today.strftime("%Y%m%d")
+            end_datetime_obj_kst = today
+        elif end_date.lower() == 'd':
+            last_aggregate_db_utc = db.get_last_aggregate_date(guild_id)
+            if last_aggregate_db_utc:
+                end_datetime_obj_kst = last_aggregate_db_utc.astimezone(kst)
+                print(f"[집계] 'd' 옵션 사용 (종료): 마지막 집계 시간 {end_datetime_obj_kst.strftime('%Y%m%d %H:%M:%S')}")
+            else:
+                await inter.edit_original_response(
+                    content="❌ 'd' 옵션을 사용하려면 이전에 집계 기록이 있어야 하는 것이다."
+                )
+                return
+        else:
+            try:
+                end_datetime_obj_kst = kst.localize(datetime.datetime.strptime(end_date, "%Y%m%d").replace(hour=23, minute=59, second=59))
+            except ValueError:
+                await inter.edit_original_response(
+                    content="❌ 종료 날짜 형식이 잘못되었습니다. yyyyMMdd, 't', 또는 'd'로 입력하는 것이다."
+                )
+                return
 
-        try:
-            # 날짜 변환
-            start = datetime.datetime.strptime(start_date, "%Y%m%d")
-            end = datetime.datetime.strptime(end_date, "%Y%m%d")
-            
-            start_date = kst.localize(start.replace(hour=0, minute=0, second=0))
-            end_date = kst.localize(end.replace(hour=23, minute=59, second=59))
-            
-            start_date_utc = start_date.astimezone(pytz.UTC)
-            end_date_utc = end_date.astimezone(pytz.UTC)
-        except ValueError:
+        # UTC로 변환
+        start_date_utc = start_datetime_obj_kst.astimezone(pytz.UTC)
+        end_date_utc = end_datetime_obj_kst.astimezone(pytz.UTC)
+
+        if start_date_utc > end_date_utc:
             await inter.edit_original_response(
-                content="❌ 날짜 형식이 잘못되었습니다. yyyyMMdd 형식 또는 't'로 입력하는 것이다."
+                content="❌ 시작 시간이 종료 시간보다 늦을 수 없는 것이다."
             )
             return
 
         # 진행 상황 알림
-        await inter.edit_original_response(content="메시지를 조회 중인 것이다... ⏳")
+        await inter.edit_original_response(content=f"메시지를 조회 중인 것이다... ⏳\n"
+                                                 f"기간: {start_datetime_obj_kst.strftime('%Y-%m-%d %H:%M:%S')} ~ {end_datetime_obj_kst.strftime('%Y-%m-%d %H:%M:%S')} (KST)")
 
         # 메시지 조회
         messages = get_messages_in_period(guild_id, start_date_utc, end_date_utc)
@@ -169,8 +205,8 @@ async def 집계(inter: disnake.ApplicationCommandInteraction, start_date: str, 
             top_chatters,
             first_role,
             other_role,
-            start_date=start_date_utc,
-            end_date=end_date_utc
+            start_date=start_datetime_obj_kst, # KST datetime 객체 전달
+            end_date=end_datetime_obj_kst     # KST datetime 객체 전달
         )
         if image:
             # 채팅 카운트 초기화
@@ -197,7 +233,7 @@ async def 집계(inter: disnake.ApplicationCommandInteraction, start_date: str, 
         except:
             await inter.channel.send("❌ 오류가 발생한 것이다. 다시 시도하는 것이다.")
 
-async def create_ranking_image(guild, top_chatters, first_role, other_role, start_date, end_date):
+async def create_ranking_image(guild, top_chatters, first_role, other_role, start_date, end_date): # start_date, end_date는 KST datetime 객체
     width, height = 920, 1050
     
     # 기본 캔버스 생성
@@ -832,20 +868,31 @@ async def create_ranking_image(guild, top_chatters, first_role, other_role, star
     # 집계 시간과 기간 표시 (수정된 부분)
     now_utc = datetime.datetime.now(pytz.utc)
     now_kst = now_utc.astimezone(pytz.timezone('Asia/Seoul'))
-    start_kst = start_date.astimezone(pytz.timezone('Asia/Seoul'))
-    end_kst = end_date.astimezone(pytz.timezone('Asia/Seoul'))
     
-    days_diff = (end_kst.date() - start_kst.date()).days + 1
-    start_str = start_kst.strftime("%y/%m/%d")
-    end_str = end_kst.strftime("%y/%m/%d")
+    # start_date와 end_date는 이미 KST datetime 객체
     
+    # 기간 표시 문자열 생성
+    # start_date와 end_date가 같은 날짜이고, 시간까지 동일하면 해당 시간만 표시
+    if start_date.date() == end_date.date() and start_date.time() == end_date.time():
+        period_str_display = start_date.strftime("%y/%m/%d %H:%M")
+        days_diff_str = "(특정 시점)"
+    elif start_date.date() == end_date.date(): # 같은 날짜, 다른 시간
+        period_str_display = f"{start_date.strftime('%y/%m/%d %H:%M')} ~ {end_date.strftime('%H:%M')}"
+        time_delta_for_days = end_date - start_date
+        days_diff_str = f"({(time_delta_for_days.total_seconds() / 3600):.1f}시간)"
+    else: # 다른 날짜
+        period_str_display = f"{start_date.strftime('%y/%m/%d %H:%M')} ~ {end_date.strftime('%y/%m/%d %H:%M')}"
+        # 날짜 차이 계산 (단순 일수 차이)
+        days_diff = (end_date.date() - start_date.date()).days
+        days_diff_str = f"({days_diff + 1}일)"
+
     hour_str = "오전" if now_kst.hour < 12 else "오후"
     hour_12 = now_kst.hour if now_kst.hour <= 12 else now_kst.hour - 12
     if hour_12 == 0:
         hour_12 = 12
     time_str = f"{now_kst.strftime('%Y/%m/%d')} {hour_str} {hour_12}시 {now_kst.strftime('%M분 %S초')}"
     
-    period_str = f"집계 기간: {start_str} ~ {end_str} ({days_diff}일)"
+    period_str = f"집계 기간: {period_str_display} {days_diff_str}"
     time_color = (220, 220, 220)  # 연한 흰색으로 변경
     
     # 테두리 없이 심플하게 텍스트만 표시
