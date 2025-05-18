@@ -88,12 +88,15 @@ async def 집계(inter: disnake.ApplicationCommandInteraction, start_date: str, 
 
         # 시작 날짜 처리
         if start_date.lower() == 't':
-            start_datetime_obj_kst = today
+            # 't'는 오늘 날짜를 의미
+            start_datetime_obj_kst = today.replace(hour=0, minute=0, second=0, microsecond=0)
+            print(f"[집계] 't' 옵션 사용 (시작): {start_datetime_obj_kst.strftime('%Y-%m-%d %H:%M:%S')}")
         elif start_date.lower() == 'd':
+            # 'd'는 마지막 집계 날짜를 의미
             last_aggregate_db_utc = db.get_last_aggregate_date(guild_id)
             if last_aggregate_db_utc:
                 start_datetime_obj_kst = last_aggregate_db_utc.astimezone(kst)
-                print(f"[집계] 'd' 옵션 사용 (시작): 마지막 집계 시간 {start_datetime_obj_kst.strftime('%Y%m%d %H:%M:%S')}")
+                print(f"[집계] 'd' 옵션 사용 (시작): 마지막 집계 시간 {start_datetime_obj_kst.strftime('%Y-%m-%d %H:%M:%S')}")
             else:
                 await inter.edit_original_response(
                     content="❌ 'd' 옵션을 사용하려면 이전에 집계 기록이 있어야 하는 것이다."
@@ -101,21 +104,26 @@ async def 집계(inter: disnake.ApplicationCommandInteraction, start_date: str, 
                 return
         else:
             try:
+                # 일반 날짜 형식 처리 (YYYYMMDD)
                 start_datetime_obj_kst = kst.localize(datetime.datetime.strptime(start_date, "%Y%m%d").replace(hour=0, minute=0, second=0))
             except ValueError:
                 await inter.edit_original_response(
-                    content="❌ 시작 날짜 형식이 잘못되었습니다. yyyyMMdd, 't', 또는 'd'로 입력하는 것이다."
+                    content="❌ 시작 날짜 형식이 잘못되었습니다. yyyyMMdd 형식 또는 't'(오늘) 또는 'd'(마지막 집계일)로 입력하는 것이다."
                 )
                 return
         
         # 종료 날짜 처리
         if end_date.lower() == 't':
-            end_datetime_obj_kst = today
+            # 't'는 오늘 날짜의 끝을 의미
+            end_datetime_obj_kst = today.replace(hour=23, minute=59, second=59, microsecond=999999)
+            print(f"[집계] 't' 옵션 사용 (종료): {end_datetime_obj_kst.strftime('%Y-%m-%d %H:%M:%S')}")
         elif end_date.lower() == 'd':
+            # 'd'는 마지막 집계 날짜를 의미
             last_aggregate_db_utc = db.get_last_aggregate_date(guild_id)
             if last_aggregate_db_utc:
+                # 마지막 집계 날짜(시간까지 포함)
                 end_datetime_obj_kst = last_aggregate_db_utc.astimezone(kst)
-                print(f"[집계] 'd' 옵션 사용 (종료): 마지막 집계 시간 {end_datetime_obj_kst.strftime('%Y%m%d %H:%M:%S')}")
+                print(f"[집계] 'd' 옵션 사용 (종료): 마지막 집계 시간 {end_datetime_obj_kst.strftime('%Y-%m-%d %H:%M:%S')}")
             else:
                 await inter.edit_original_response(
                     content="❌ 'd' 옵션을 사용하려면 이전에 집계 기록이 있어야 하는 것이다."
@@ -123,10 +131,11 @@ async def 집계(inter: disnake.ApplicationCommandInteraction, start_date: str, 
                 return
         else:
             try:
+                # 일반 날짜 형식 처리 (YYYYMMDD)
                 end_datetime_obj_kst = kst.localize(datetime.datetime.strptime(end_date, "%Y%m%d").replace(hour=23, minute=59, second=59))
             except ValueError:
                 await inter.edit_original_response(
-                    content="❌ 종료 날짜 형식이 잘못되었습니다. yyyyMMdd, 't', 또는 'd'로 입력하는 것이다."
+                    content="❌ 종료 날짜 형식이 잘못되었습니다. yyyyMMdd 형식 또는 't'(오늘) 또는 'd'(마지막 집계일)로 입력하는 것이다."
                 )
                 return
 
@@ -140,16 +149,26 @@ async def 집계(inter: disnake.ApplicationCommandInteraction, start_date: str, 
             )
             return
 
-        # 진행 상황 알림
-        await inter.edit_original_response(content=f"메시지를 조회 중인 것이다... ⏳\n"
-                                                 f"기간: {start_datetime_obj_kst.strftime('%Y-%m-%d %H:%M:%S')} ~ {end_datetime_obj_kst.strftime('%Y-%m-%d %H:%M:%S')} (KST)")
+        # 진행 상황 알림 - 날짜 범위 표시 포맷 개선
+        date_format = '%Y년 %m월 %d일 %H시 %M분'
+        start_display = start_datetime_obj_kst.strftime(date_format)
+        end_display = end_datetime_obj_kst.strftime(date_format)
+
+        # 특별 키워드('t', 'd')가 사용된 경우 해당 정보도 함께 표시
+        start_keyword = f" ('{start_date}')" if start_date.lower() in ['t', 'd'] else ""
+        end_keyword = f" ('{end_date}')" if end_date.lower() in ['t', 'd'] else ""
+        
+        await inter.edit_original_response(
+            content=f"메시지를 조회 중인 것이다... ⏳\n"
+                   f"기간: {start_display}{start_keyword} ~ {end_display}{end_keyword}"
+        )
 
         # 메시지 조회
         messages = get_messages_in_period(guild_id, start_date_utc, end_date_utc)
         if not messages:
             await inter.edit_original_response(
                 content=f"❌ 이 기간 동안 채팅 데이터가 없는 것이다.\n"
-                f"검색 기간: {start_date.strftime('%Y-%m-%d %H:%M')} ~ {end_date.strftime('%Y-%m-%d %H:%M')}"
+                f"검색 기간: {start_display}{start_keyword} ~ {end_display}{end_keyword}"
             )
             return
 
