@@ -6,6 +6,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 import os
 import warnings
+import pytz  # pytz 모듈 추가
 
 # 경고 필터링
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="disnake.http")
@@ -483,6 +484,7 @@ async def process_text_aggregate_command(message):
             await progress_msg.edit(content="결과 이미지를 생성 중인 것이다... ⏳")
             
             # 시작날짜와 종료날짜는 현재 시간으로 (의미 없음)
+            import pytz  # 이 줄도 추가하면 더 안전함
             kst = pytz.timezone('Asia/Seoul')
             now = datetime.now(kst)
             
