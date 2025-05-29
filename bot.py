@@ -322,6 +322,18 @@ async def on_message(message):
     if message.author.bot or not message.guild:
         return
 
+    # 포럼 채널 메시지 무시 (추가된 부분)
+    if hasattr(message.channel, 'type') and message.channel.type == disnake.ChannelType.forum:
+        # 디버그 로그 - 포럼 메시지 감지
+        print(f"[채팅] 포럼 채널 메시지 무시: 서버 {message.guild.id}, 채널 {message.channel.name}, 사용자 {message.author.name}")
+        return
+    
+    # 포럼 쓰레드 내 메시지도 무시 (추가된 부분)
+    if hasattr(message.channel, 'parent') and message.channel.parent and hasattr(message.channel.parent, 'type'):
+        if message.channel.parent.type == disnake.ChannelType.forum:
+            print(f"[채팅] 포럼 쓰레드 메시지 무시: 서버 {message.guild.id}, 채널 {message.channel.name}, 사용자 {message.author.name}")
+            return
+
     # !list 명령어는 항상 허용 (auth.py에서 처리)
     if message.content.lower().startswith('!list'):
         return

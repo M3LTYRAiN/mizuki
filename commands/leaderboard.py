@@ -13,7 +13,10 @@ class LeaderboardView(View):
         self.current_page = current_page
         self.author_id = author_id  # 명령어 사용자 ID 저장
         self.chat_counts = server_chat_counts[self.guild_id]
+        
+        # 순위 계산 시 제외 역할을 필터링하지 않음 (변경된 부분)
         sorted_chatters = sorted(self.chat_counts.items(), key=lambda x: x[1], reverse=True)
+        
         # 페이지당 25명으로 변경 (50명에서)
         self.items_per_page = 25
         self.max_page = (len(sorted_chatters) - 1) // self.items_per_page + 1
@@ -28,6 +31,7 @@ class LeaderboardView(View):
 
     async def update_page(self, inter):
         chat_counts = self.chat_counts
+        # 모든 사용자 포함하여 정렬 (제외 역할 필터링 없음)
         sorted_chatters = sorted(chat_counts.items(), key=lambda x: x[1], reverse=True)
 
         # 페이지당 25명으로 변경 (50명에서)
@@ -48,22 +52,32 @@ class LeaderboardView(View):
         for index, (user_id, count) in enumerate(page_data, start=start_index + 1):
             member = inter.guild.get_member(user_id)
             if member:
+                # 제외 역할 여부 확인
                 excluded = any(role.id in excluded_roles for role in member.roles)
                 
-                # 명령어 사용자인 경우 강조
+                # 사용자를 강조할지 결정
                 if member.id == command_user.id:
-                    leaderboard_text += f"**`{index}등.` {member.mention} - {count}회**"
+                    name_text = f"**`{index}등.` {member.mention} - {count}회"
+                    if excluded:
+                        name_text += " (제외됨)**"
+                    else:
+                        name_text += "**"
                 else:
-                    leaderboard_text += f"`{index}등.` {member.mention} - {count}회"
+                    name_text = f"`{index}등.` {member.mention} - {count}회"
+                    if excluded:
+                        name_text += " (제외됨)"
                 
-                if excluded:
-                    leaderboard_text += " (제외됨)"
-                leaderboard_text += "\n"
+                leaderboard_text += name_text + "\n"
 
         # 현재 페이지에 명령어 사용자가 없는 경우, 하단에 사용자 정보 표시
         if not any(uid == command_user.id for uid, _ in page_data) and user_rank is not None:
             leaderboard_text += "\n─────────────────\n"
-            leaderboard_text += f"**나의 순위: `{user_rank}등` - {user_count}회**"
+            
+            # 자신이 제외 역할인지 확인
+            self_excluded = any(role.id in excluded_roles for role in command_user.roles)
+            exclude_text = " (제외됨)" if self_excluded else ""
+            
+            leaderboard_text += f"**나의 순위: `{user_rank}등` - {user_count}회{exclude_text}**"
 
         embed.description = leaderboard_text
 
