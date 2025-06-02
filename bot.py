@@ -338,6 +338,31 @@ async def on_message(message):
     if message.content.lower().startswith('!list'):
         return
 
+    # !테놀 명령어 처리 추가
+    if message.content.lower().startswith('!테놀 '):
+        # 검색어 추출
+        search_query = message.content[4:].strip()
+        if not search_query:
+            await message.reply("검색어를 입력하는 것이다! 예: `!테놀 고양이`", ephemeral=True)
+            return
+            
+        # 서버 인증 확인
+        from commands.auth import is_guild_authorized
+        if not is_guild_authorized(message.guild.id):
+            await message.reply("❌ 이 서버에서는 이 명령어를 사용할 수 없는 것이다.", ephemeral=True)
+            return
+        
+        # tenor.py의 함수 호출
+        from commands.tenor import process_tenor_command
+        try:
+            await process_tenor_command(message, search_query, is_slash_command=False)
+        except Exception as e:
+            print(f"!테놀 명령어 처리 중 오류 발생: {e}")
+            import traceback
+            traceback.print_exc()
+            await message.reply(f"❌ GIF 검색 중 오류가 발생한 것이다: {str(e)}", ephemeral=True)
+        return
+
     # !집계 명령어 처리 추가
     if message.content.strip().lower() == "!집계":
         # 관리자 권한 확인
@@ -550,7 +575,7 @@ async def process_text_aggregate_command(message):
 async def on_slash_command_error(inter, error):
     import traceback
     print(f"명령어 오류 발생 ({inter.data.name}): {error}")
-    traceback.print_exc()
+    traceback.print.exc()
 
 # 봇 실행 (환경 변수에서 토큰 가져오기)
 TOKEN = os.getenv('DISCORD_TOKEN')
