@@ -343,13 +343,13 @@ async def on_message(message):
         # 검색어 추출
         search_query = message.content[4:].strip()
         if not search_query:
-            await message.reply("검색어를 입력하는 것이다! 예: `!테놀 고양이`", ephemeral=True)
+            await message.reply("검색어를 입력하는 것이다! 예: `!테놀 고양이`")
             return
             
         # 서버 인증 확인
         from commands.auth import is_guild_authorized
         if not is_guild_authorized(message.guild.id):
-            await message.reply("❌ 이 서버에서는 이 명령어를 사용할 수 없는 것이다.", ephemeral=True)
+            await message.reply("❌ 이 서버에서는 이 명령어를 사용할 수 없는 것이다.")
             return
         
         # tenor.py의 함수 호출
@@ -360,7 +360,7 @@ async def on_message(message):
             print(f"!테놀 명령어 처리 중 오류 발생: {e}")
             import traceback
             traceback.print_exc()
-            await message.reply(f"❌ GIF 검색 중 오류가 발생한 것이다: {str(e)}", ephemeral=True)
+            await message.reply(f"❌ GIF 검색 중 오류가 발생한 것이다: {str(e)}")
         return
 
     # !집계 명령어 처리 추가

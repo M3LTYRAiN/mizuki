@@ -3,6 +3,7 @@ from disnake.ext import commands
 import aiohttp
 import os
 import re
+import random  # 랜덤 모듈 추가
 from dotenv import load_dotenv
 from bot import bot
 
@@ -39,7 +40,7 @@ async def process_tenor_command(context, search, is_slash_command=True):
             if is_slash_command:
                 await context.edit_original_response(content="해당 URL의 GIF를 찾을 수 없는 것이다. 😢", embed=None, view=None)
             else:
-                await context.reply("해당 URL의 GIF를 찾을 수 없는 것이다. 😢", ephemeral=True)
+                await context.reply("해당 URL의 GIF를 찾을 수 없는 것이다. 😢")
             return
 
         gif_url = results[0]["media_formats"]["gif"]["url"]
@@ -77,17 +78,34 @@ async def process_tenor_command(context, search, is_slash_command=True):
         if is_slash_command:
             await context.edit_original_response(content="GIF를 찾을 수 없는 것이다. 😢", embed=None, view=None)
         else:
-            await context.reply("GIF를 찾을 수 없는 것이다. 😢", ephemeral=True)
+            await context.reply("GIF를 찾을 수 없는 것이다. 😢")
         return
 
     gifs = [item["media_formats"]["gif"]["url"] for item in results]
 
-    # 버튼 인터페이스
+    # !테놀 텍스트 명령어인 경우 랜덤 GIF 즉시 전송
+    if not is_slash_command:
+        # 검색 결과에서 랜덤하게 하나 선택
+        random_gif_url = random.choice(gifs)
+        
+        # 웹훅으로 전송
+        webhook = await context.channel.create_webhook(name=context.author.display_name, avatar=await context.author.avatar.read())
+        await webhook.send(random_gif_url, username=context.author.display_name, avatar_url=context.author.avatar.url)
+        await webhook.delete()
+        
+        # 원본 명령어 메시지 삭제
+        try:
+            await context.delete()
+        except:
+            pass
+        
+        return
+
+    # 슬래시 명령어용 GIF 선택 UI
     class GifView(disnake.ui.View):
-        def __init__(self, original_message=None):
+        def __init__(self):
             super().__init__(timeout=60)
             self.current_index = 0
-            self.original_message = original_message  # 원본 메시지 저장 (텍스트 명령어용)
 
         async def interaction_check(self, interaction: disnake.MessageInteraction) -> bool:
             if interaction.user.id != (context.author.id if not is_slash_command else context.user.id):
