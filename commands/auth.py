@@ -11,7 +11,7 @@ import database as db
 authorized_guilds = {}
 
 # 봇 관리자 ID (인증코드 생성 권한을 가진 사용자)
-BOT_ADMIN_ID = 1161916637428060270
+BOT_ADMIN_ID = 1336307715915513907  # 기존 ID에서 새로운 ID로 변경
 
 # 서버별 첫 명령어 사용자 추적
 first_command_users = {}
