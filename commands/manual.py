@@ -191,7 +191,14 @@ async def 메뉴얼(inter: disnake.ApplicationCommandInteraction):
                         last_date = db.get_last_aggregate_date(guild_id)
                         if last_date:
                             kst = pytz.timezone('Asia/Seoul')
+                            # 시간대 정보 확인 및 명시적 변환
+                            if last_date.tzinfo is None:
+                                last_date = last_date.replace(tzinfo=pytz.UTC)
+                                
                             last_date_kst = last_date.astimezone(kst)
+                            print(f"[메뉴얼] 마지막 집계일 원본: {last_date}")
+                            print(f"[메뉴얼] 마지막 집계일 KST 변환: {last_date_kst}")
+                            
                             last_aggregate = last_date_kst.strftime("%Y년 %m월 %d일 %H시 %M분")
                     except Exception as e:
                         last_aggregate = f"❌ 정보를 확인할 수 없는 것이다: {e}"

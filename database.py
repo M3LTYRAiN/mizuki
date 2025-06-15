@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 import pymongo
 from datetime import datetime, timezone  # timezone 추가
 import warnings
+import pytz  # 시간대 모듈 추가 확인 및 기본 시간대 설정
 
 # MongoDB 관련 경고 무시
 warnings.filterwarnings("ignore", message="datetime.datetime.utcfromtimestamp.*is deprecated")
@@ -277,30 +278,53 @@ def get_messages_in_period(guild_id, start_date, end_date):
 
     return [{"user_id": doc["user_id"]} for doc in cursor]
 
-# 추가: 집계 날짜 저장 함수
+# 추가: 집계 날짜 저장 함수 수정
 def save_last_aggregate_date(guild_id):
     """마지막 집계 날짜를 저장합니다"""
     if not is_mongo_connected():
         return
 
+    # 현재 시간을 UTC로 명시적 변환하여 저장
+    now = datetime.now(timezone.utc)
+    
+    # 저장 전 로그 추가
+    print(f"[집계일] 저장하는 시간 (UTC): {now}")
+    print(f"[집계일] 저장하는 시간 (KST): {now.astimezone(pytz.timezone('Asia/Seoul'))}")
+
     aggregate_dates_collection.update_one(
         {"guild_id": guild_id},
         {"$set": {
             "guild_id": guild_id,
-            "last_aggregate_date": datetime.now(timezone.utc),
-            "updated_at": datetime.now(timezone.utc)
+            "last_aggregate_date": now,
+            "updated_at": now
         }},
         upsert=True
     )
 
-# 추가: 집계 날짜 조회 함수
+# 추가: 집계 날짜 조회 함수 수정
 def get_last_aggregate_date(guild_id):
     """마지막 집계 날짜를 조회합니다"""
     if not is_mongo_connected():
         return None
 
     doc = aggregate_dates_collection.find_one({"guild_id": guild_id})
-    return doc["last_aggregate_date"] if doc else None
+    
+    # 날짜 검증 및 로깅 추가
+    if doc and "last_aggregate_date" in doc:
+        date_obj = doc["last_aggregate_date"]
+        if isinstance(date_obj, datetime):
+            # 시간대 정보 확인 및 로깅
+            if date_obj.tzinfo is None:
+                print(f"[집계일] 경고: 시간대 정보 없음, UTC로 가정합니다: {date_obj}")
+                date_obj = date_obj.replace(tzinfo=timezone.utc)
+            else:
+                print(f"[집계일] 시간대 정보 있음: {date_obj.tzinfo}")
+                
+            print(f"[집계일] 조회된 시간 (UTC): {date_obj}")
+            print(f"[집계일] 조회된 시간 (KST): {date_obj.astimezone(pytz.timezone('Asia/Seoul'))}")
+            return date_obj
+            
+    return None
 
 # 추가: 채팅 카운트 초기화 함수
 def reset_chat_counts(guild_id):
