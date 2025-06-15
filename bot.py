@@ -427,6 +427,12 @@ async def process_text_aggregate_command(message):
     """텍스트 명령어 !집계를 처리합니다. 현재 리더보드에 있는 채팅 데이터를 기준으로 집계합니다."""
     guild_id = message.guild.id
     
+    # 원본 메시지 삭제 (추가된 부분)
+    try:
+        await message.delete()
+    except Exception as e:
+        print(f"집계 명령어 메시지 삭제 오류 (E001): {e}")
+    
     # 진행 상황 메시지 전송
     progress_msg = await message.channel.send("집계를 시작하는 것이다... ⏳")
     
@@ -440,15 +446,15 @@ async def process_text_aggregate_command(message):
                     server_chat_counts[guild_id] = Counter(guild_chat_counts)
                     print(f"[!집계] 서버 {guild_id}의 채팅 카운트 로드: {len(guild_chat_counts)}개 항목")
                 else:
-                    await progress_msg.edit(content="❌ 채팅 기록이 없어 집계할 수 없는 것이다.")
+                    await progress_msg.edit(content="❌ 채팅 기록이 없어 집계할 수 없는 것이다. (E002)")
                     return
             else:
-                await progress_msg.edit(content="❌ 데이터베이스에 연결되어 있지 않은 것이다.")
+                await progress_msg.edit(content="❌ 데이터베이스에 연결되어 있지 않은 것이다. (E003)")
                 return
                 
         # 채팅 데이터 확인
         if not server_chat_counts[guild_id]:
-            await progress_msg.edit(content="❌ 집계할 채팅 데이터가 없는 것이다.")
+            await progress_msg.edit(content="❌ 집계할 채팅 데이터가 없는 것이다. (E004)")
             return
             
         # 현재 상위 6명의 채팅 데이터 생성
@@ -463,10 +469,10 @@ async def process_text_aggregate_command(message):
                     if role_data:
                         server_roles[guild_id] = role_data
                     else:
-                        await progress_msg.edit(content="❌ 역할이 설정되지 않았습니다. `/역할설정` 명령어를 사용하는 것이다.")
+                        await progress_msg.edit(content="❌ 역할이 설정되지 않았습니다. `/역할설정` 명령어를 사용하는 것이다. (E005)")
                         return
                 else:
-                    await progress_msg.edit(content="❌ 역할 설정을 확인할 수 없는 것이다.")
+                    await progress_msg.edit(content="❌ 역할 설정을 확인할 수 없는 것이다. (E006)")
                     return
             
             # 역할 객체 가져오기
@@ -474,7 +480,7 @@ async def process_text_aggregate_command(message):
             other_role = disnake.utils.get(message.guild.roles, id=server_roles[guild_id]["other"])
             
             if not first_role or not other_role:
-                await progress_msg.edit(content="❌ 설정된 역할을 찾을 수 없는 것이다.")
+                await progress_msg.edit(content="❌ 설정된 역할을 찾을 수 없는 것이다. (E007)")
                 return
                 
             # 제외 역할 적용
@@ -489,33 +495,54 @@ async def process_text_aggregate_command(message):
                           
             # 아무도 없으면 에러 메시지
             if not top_chatters:
-                await progress_msg.edit(content="❌ 집계할 수 있는 사용자가 없는 것이다.")
+                await progress_msg.edit(content="❌ 집계할 수 있는 사용자가 없는 것이다. (E008)")
                 return
                 
             await progress_msg.edit(content="역할을 배분하는 것이다... ⏳")
                 
             # 1. 기존 역할 제거
-            for member in message.guild.members:
-                if first_role in member.roles or other_role in member.roles:
-                    await member.remove_roles(first_role, other_role)
+            try:
+                for member in message.guild.members:
+                    if first_role in member.roles or other_role in member.roles:
+                        await member.remove_roles(first_role, other_role)
+            except disnake.Forbidden:
+                await progress_msg.edit(content="❌ 역할을 제거할 권한이 없는 것이다. (E009)")
+                return
+            except Exception as e:
+                await progress_msg.edit(content=f"❌ 역할 제거 중 오류: {e} (E010)")
+                return
             
             # 2. 1등 역할 원래 색상으로 복원
-            from commands.role_color import restore_role_original_color
-            original_color = restore_role_original_color(message.guild, first_role)
-            if original_color:
-                await first_role.edit(color=disnake.Color(original_color))
+            try:
+                from commands.role_color import restore_role_original_color
+                original_color = restore_role_original_color(message.guild, first_role)
+                if original_color:
+                    await first_role.edit(color=disnake.Color(original_color))
+            except disnake.Forbidden:
+                await progress_msg.edit(content="❌ 역할 색상을 변경할 권한이 없는 것이다! (E011)")
+                return
+            except Exception as e:
+                await progress_msg.edit(content=f"❌ 역할 색상 변경 중 오류: {e} (E012)")
+                return
             
             # 3. 새 역할 부여
-            for index, (user_id, _) in enumerate(top_chatters):
-                member = message.guild.get_member(user_id)
-                if member:
-                    if index == 0:  # 1등만
-                        await member.add_roles(first_role)
-                        role_type = "first"
-                    else:  # 2-6등
-                        await member.add_roles(other_role)
-                        role_type = "other"
-                    update_role_streak(guild_id, user_id, role_type)
+            try:
+                for index, (user_id, _) in enumerate(top_chatters):
+                    member = message.guild.get_member(user_id)
+                    if member:
+                        if index == 0:  # 1등만
+                            await member.add_roles(first_role)
+                            role_type = "first"
+                        else:  # 2-6등
+                            await member.add_roles(other_role)
+                            role_type = "other"
+                        update_role_streak(guild_id, user_id, role_type)
+            except disnake.Forbidden:
+                await progress_msg.edit(content="❌ 역할을 부여할 권한이 없는 것이다! (E013)")
+                return
+            except Exception as e:
+                await progress_msg.edit(content=f"❌ 역할 부여 중 오류: {e} (E014)")
+                return
             
             # 4. 이미지 생성 및 전송
             await progress_msg.edit(content="결과 이미지를 생성 중인 것이다... ⏳")
@@ -526,15 +553,19 @@ async def process_text_aggregate_command(message):
             now = datetime.now(kst)
             
             # 이미지 생성 (aggregate.py의 함수 호출)
-            from commands.aggregate import create_ranking_image
-            image = await create_ranking_image(
-                message.guild,
-                top_chatters,
-                first_role,
-                other_role,
-                start_date=now,  # 현재 시간
-                end_date=now     # 현재 시간
-            )
+            try:
+                from commands.aggregate import create_ranking_image
+                image = await create_ranking_image(
+                    message.guild,
+                    top_chatters,
+                    first_role,
+                    other_role,
+                    start_date=now,  # 현재 시간
+                    end_date=now     # 현재 시간
+                )
+            except Exception as e:
+                await progress_msg.edit(content=f"❌ 이미지 생성 중 오류: {e} (E015)")
+                return
             
             if image:
                 # 이미지 전송
@@ -543,9 +574,8 @@ async def process_text_aggregate_command(message):
                 except:
                     pass  # 실패해도 계속 진행
                 
-                # 새 메시지로 이미지 전송
+                # 새 메시지로 이미지만 전송 (성공 메시지 제거)
                 await message.channel.send(
-                    content="✅ 현재 리더보드 기준으로 역할을 배분했습니다!",
                     file=disnake.File(fp=image, filename="ranking.png")
                 )
                 
@@ -556,19 +586,19 @@ async def process_text_aggregate_command(message):
                 save_last_aggregate_date(guild_id)
                 
             else:
-                await progress_msg.edit(content="❌ 이미지 생성에 실패한 것이다...")
+                await progress_msg.edit(content="❌ 이미지 생성에 실패한 것이다... (E016)")
                 
         except Exception as e:
             print(f"!집계 명령어 처리 중 오류 발생: {e}")
             import traceback
             traceback.print_exc()
-            await progress_msg.edit(content=f"❌ 집계 중 오류가 발생한 것이다. (`{str(e)}`)")
+            await progress_msg.edit(content=f"❌ 집계 중 오류가 발생한 것이다: {str(e)} (E017)")
             
     except Exception as e:
         print(f"!집계 명령어 처리 중 오류 발생: {e}")
         import traceback
         traceback.print_exc()
-        await progress_msg.edit(content="❌ 집계 명령어 처리 중 오류가 발생한 것이다.")
+        await progress_msg.edit(content=f"❌ 집계 명령어 처리 중 오류가 발생한 것이다: {str(e)} (E018)")
 
 # 에러 핸들링 이벤트 추가
 @bot.event

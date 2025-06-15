@@ -75,10 +75,12 @@ async def 집계(inter: disnake.ApplicationCommandInteraction, start_date: str, 
         await inter.channel.send("❌ 처리 시간이 초과된 것이다. 다시 시도하는 것이다.")
     except Exception as e:
         print(f"Aggregate command error: {e}")
+        import traceback
+        traceback.print_exc()
         try:
-            await inter.followup.send("❌ 오류가 발생한 것이다. 다시 시도하는 것이다.", ephemeral=True)
+            await inter.followup.send("❌ 오류가 발생한 것이다. 다시 시도하는 것이다. (E100)", ephemeral=True)
         except:
-            await inter.channel.send("❌ 오류가 발생한 것이다. 다시 시도하는 것이다.")
+            await inter.channel.send("❌ 오류가 발생한 것이다. 다시 시도하는 것이다. (E101)")
 
 
 # 실제 집계 로직을 별도 함수로 분리
@@ -104,6 +106,11 @@ async def execute_aggregate(channel, guild, author, start_date, end_date, inter=
                 await inter.edit_original_response(content=content)
             except Exception as e:
                 print(f"인터랙션 응답 업데이트 오류: {e}")
+                # 실패 시 followup 메시지로 시도
+                try:
+                    await inter.followup.send(content=content, ephemeral=False)
+                except Exception as follow_e:
+                    print(f"인터랙션 followup 응답 오류: {follow_e}")
         elif update_message:
             try:
                 await update_message.edit(content=content)
@@ -111,27 +118,32 @@ async def execute_aggregate(channel, guild, author, start_date, end_date, inter=
                 print(f"메시지 업데이트 오류: {e}")
                 try:
                     await channel.send(content)
-                except:
-                    pass
+                except Exception as send_e:
+                    print(f"채널 메시지 전송 오류: {send_e}")
 
     # 역할 설정 확인 및 로드 시도
     if guild_id not in server_roles:
         print(f"[집계] 서버 {guild_id}의 역할 데이터가 메모리에 없음. DB에서 로드 시도.")
         if db.is_mongo_connected():
-            role_data_from_db = db.get_guild_role_data(guild_id)
-            if role_data_from_db:
-                server_roles[guild_id] = role_data_from_db
-                print(f"[집계] DB에서 역할 데이터 로드 성공: {role_data_from_db}")
-            else:
-                await update_status("❌ 역할이 설정되지 않았습니다. /역할설정 명령어를 사용하는 것이다.")
+            try:
+                role_data_from_db = db.get_guild_role_data(guild_id)
+                if role_data_from_db:
+                    server_roles[guild_id] = role_data_from_db
+                    print(f"[집계] DB에서 역할 데이터 로드 성공: {role_data_from_db}")
+                else:
+                    await update_status("❌ 역할이 설정되지 않았습니다. `/역할설정` 명령어를 사용하는 것이다. (E102)")
+                    return
+            except Exception as db_error:
+                print(f"[집계] DB 접근 오류: {db_error}")
+                await update_status(f"❌ 역할 데이터 로드 중 오류가 발생한 것이다. (E103)")
                 return
         else:
-            await update_status("❌ DB 연결 오류. 역할 설정을 확인할 수 없습니다.")
+            await update_status("❌ DB 연결 오류. 역할 설정을 확인할 수 없습니다. (E104)")
             return
     
     # 다시 한번 확인
     if guild_id not in server_roles:
-        await update_status("❌ 역할이 설정되지 않았습니다. /역할설정 명령어를 사용하는 것이다. (재확인 실패)")
+        await update_status("❌ 역할이 설정되지 않았습니다. `/역할설정` 명령어를 사용하는 것이다. (E105)")
         return
 
     # KST 시간대 설정
@@ -717,8 +729,32 @@ async def create_ranking_image(guild, top_chatters, first_role, other_role, star
     # 프로필 이미지 처리
     async def get_high_quality_avatar(member, size, rank_index=None):
         try:
-            avatar = await member.avatar.read()
-            avatar_image = Image.open(io.BytesIO(avatar)).convert('RGBA')
+            # 아바타가 설정되어 있는지 확인
+            if member.avatar:
+                avatar = await member.avatar.read()
+                avatar_image = Image.open(io.BytesIO(avatar)).convert('RGBA')
+            else:
+                # 기본 아바타 - 디스코드 기본색 사용한 단색 이미지
+                avatar_image = Image.new('RGBA', (size, size), (88, 101, 242, 255))  # 디스코드 컬러
+                
+                # 사용자 이름의 첫 글자(또는 식별자)를 중앙에 표시
+                from PIL import ImageDraw, ImageFont
+                draw = ImageDraw.Draw(avatar_image)
+                try:
+                    # 이름의 첫 글자 또는 식별자
+                    identifier = member.display_name[0].upper() if member.display_name else "#"
+                    font_size = size // 2
+                    font = ImageFont.truetype(MAIN_FONT_PATH, font_size)
+                    text_width = draw.textlength(identifier, font=font)
+                    text_height = font_size
+                    draw.text(
+                        ((size - text_width) // 2, (size - text_height) // 2), 
+                        identifier, 
+                        font=font, 
+                        fill=(255, 255, 255, 255)
+                    )
+                except Exception as text_error:
+                    print(f"기본 아바타에 텍스트 추가 오류: {text_error}")
             
             border_width = size // 25 if rank_index is not None and rank_index >= 2 else size // 35
             corner_radius = size // 5
@@ -762,7 +798,12 @@ async def create_ranking_image(guild, top_chatters, first_role, other_role, star
 
         except Exception as e:
             print(f"Avatar processing error: {e}")
-            return Image.new('RGBA', (size, size), (65, 70, 95, 255))
+            import traceback
+            traceback.print_exc()
+            
+            # 오류 발생 시 기본 색상의 이미지 반환
+            fallback_image = Image.new('RGBA', (size, size), (65, 70, 95, 255))
+            return fallback_image
 
     # 텍스트 렌더링 (테두리 두께 줄임)
     def draw_text_with_outline(x, y, text, font, main_color, outline_color=None, outline_width=3, is_name=False):

@@ -45,12 +45,20 @@ async def process_tenor_command(context, search, is_slash_command=True):
 
         gif_url = results[0]["media_formats"]["gif"]["url"]
 
-        # 웹훅으로 전송
+        # 웹훅으로 전송 (수정된 부분)
         channel = context.channel
         author = context.author if not is_slash_command else context
-        webhook = await channel.create_webhook(name=author.display_name, avatar=await author.avatar.read())
-        await webhook.send(gif_url, username=author.display_name, avatar_url=author.avatar.url)
-        await webhook.delete()
+        
+        # 아바타 처리 - 아바타가 없는 경우 기본 아바타 사용
+        try:
+            avatar_bytes = await author.avatar.read() if author.avatar else None
+            webhook = await channel.create_webhook(name=author.display_name, avatar=avatar_bytes)
+            await webhook.send(gif_url, username=author.display_name, avatar_url=author.display_avatar.url)
+            await webhook.delete()
+        except Exception as e:
+            print(f"웹훅 생성 중 오류: {e}")
+            # 웹훅 생성 실패 시 일반 메시지로 전송
+            await channel.send(f"{author.mention}: {gif_url}")
         
         # 원본 메시지/인터랙션 삭제 또는 응답 삭제
         if is_slash_command:
@@ -120,9 +128,16 @@ async def process_tenor_command(context, search, is_slash_command=True):
 
         @disnake.ui.button(label="선택", style=disnake.ButtonStyle.success)
         async def select_button(self, button: disnake.ui.Button, interaction: disnake.MessageInteraction):
-            webhook = await interaction.channel.create_webhook(name=interaction.user.display_name, avatar=await interaction.user.avatar.read())
-            await webhook.send(gifs[self.current_index], username=interaction.user.display_name, avatar_url=interaction.user.avatar.url)
-            await webhook.delete()
+            try:
+                # 아바타 처리 - 아바타가 없는 경우 기본 아바타 사용
+                avatar_bytes = await interaction.user.avatar.read() if interaction.user.avatar else None
+                webhook = await interaction.channel.create_webhook(name=interaction.user.display_name, avatar=avatar_bytes)
+                await webhook.send(gifs[self.current_index], username=interaction.user.display_name, avatar_url=interaction.user.display_avatar.url)
+                await webhook.delete()
+            except Exception as e:
+                print(f"웹훅 생성 중 오류: {e}")
+                # 웹훅 생성 실패 시 일반 메시지로 전송
+                await interaction.channel.send(f"{interaction.user.mention}: {gifs[self.current_index]}")
             
             # 원본 메시지 삭제 처리 (사용된 명령어 종류에 따라)
             if is_slash_command:
