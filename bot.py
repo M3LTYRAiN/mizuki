@@ -623,6 +623,7 @@ import commands.role_color
 import commands.auth
 import commands.manual
 import commands.tenor
+import commands.admin_leaderboard
 
 # 봇 실행
 if TOKEN:
