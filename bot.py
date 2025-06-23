@@ -136,6 +136,25 @@ async def on_ready():
         print(f"Logged in as {bot.user.name}")
         print(f"Bot ID: {bot.user.id}")
 
+        # 명령어 디버깅 및 동기화 코드 추가
+        print("\n==== 슬래시 명령어 상태 확인 ====")
+        try:
+            print("명령어 동기화 시작...")
+            synced = await bot.sync_commands()
+            print(f"명령어 동기화 완료: {len(synced)}개 명령어 등록됨")
+            
+            # 등록된 명령어 목록 확인
+            commands = await bot.fetch_global_commands()
+            print("\n등록된 명령어 목록:")
+            for cmd in commands:
+                print(f" - {cmd.name}: {cmd.id}")
+        except Exception as e:
+            print(f"명령어 동기화 중 오류: {e}")
+            import traceback
+            traceback.print_exc()
+            
+        print("============================\n")
+
         check_required_files()
         game_activity = disnake.Game(name="通りゃんせ　通りゃんせ")
         await bot.change_presence(activity=game_activity)
@@ -597,7 +616,7 @@ async def process_text_aggregate_command(message):
     except Exception as e:
         print(f"!집계 명령어 처리 중 오류 발생: {e}")
         import traceback
-        traceback.print_exc()
+        traceback.print.exc()
         await progress_msg.edit(content=f"❌ 집계 명령어 처리 중 오류가 발생한 것이다: {str(e)} (E018)")
 
 # 에러 핸들링 이벤트 추가

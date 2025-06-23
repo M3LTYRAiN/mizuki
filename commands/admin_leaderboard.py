@@ -145,8 +145,14 @@ def has_admin_permission(inter):
     excluded_roles = server_excluded_roles.get(guild_id, [])
     return any(role.id in excluded_roles for role in inter.author.roles)
 
-@bot.slash_command(name="리더보드관리자", description="제외된 역할을 가진 서버 사용자의 채팅 순위를 보여주는 것이다.")
+@bot.slash_command(
+    name="리더보드관리자", 
+    description="제외된 역할을 가진 서버 사용자의 채팅 순위를 보여주는 것이다.",
+    dm_permission=False  # DM에서는 사용 불가
+)
 async def 리더보드관리자(inter: disnake.ApplicationCommandInteraction):
+    print(f"리더보드관리자 명령어 호출됨: 서버 {inter.guild.id}, 사용자 {inter.author.id}")
+    
     # 권한 체크
     if not has_admin_permission(inter):
         await inter.response.send_message(
