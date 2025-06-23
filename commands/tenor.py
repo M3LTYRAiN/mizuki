@@ -96,10 +96,18 @@ async def process_tenor_command(context, search, is_slash_command=True):
         # 검색 결과에서 랜덤하게 하나 선택
         random_gif_url = random.choice(gifs)
         
-        # 웹훅으로 전송
-        webhook = await context.channel.create_webhook(name=context.author.display_name, avatar=await context.author.avatar.read())
-        await webhook.send(random_gif_url, username=context.author.display_name, avatar_url=context.author.avatar.url)
-        await webhook.delete()
+        # 웹훅으로 전송 (오류 처리 추가)
+        try:
+            # 아바타 체크 추가
+            avatar_bytes = await context.author.avatar.read() if context.author.avatar else None
+            webhook = await context.channel.create_webhook(name=context.author.display_name, avatar=avatar_bytes)
+            # display_avatar를 사용하면 기본 아바타 URL을 가져올 수 있음
+            await webhook.send(random_gif_url, username=context.author.display_name, avatar_url=context.author.display_avatar.url)
+            await webhook.delete()
+        except Exception as e:
+            print(f"웹훅 생성 중 오류: {e}")
+            # 웹훅 생성 실패 시 일반 메시지로 전송
+            await context.channel.send(f"{context.author.mention}: {random_gif_url}")
         
         # 원본 명령어 메시지 삭제
         try:
