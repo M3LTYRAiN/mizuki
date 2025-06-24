@@ -360,7 +360,7 @@ async def on_message(message):
     # !테놀 명령어 처리 추가
     if message.content.lower().startswith('!테놀 '):
         # 검색어 추출
-        search_query = message.content[4:].strip()
+        search_query = message.content[4:].trip()
         if not search_query:
             await message.reply("검색어를 입력하는 것이다! 예: `!테놀 고양이`")
             return
@@ -419,10 +419,6 @@ async def on_message(message):
                 server_chat_counts[guild_id] = Counter()
         else:
             server_chat_counts[guild_id] = Counter()
-
-    excluded_roles = server_excluded_roles.get(guild_id, [])
-    if any(role.id in excluded_roles for role in message.author.roles):
-        return
 
     # 채팅 카운트 증가
     server_chat_counts[guild_id][user_id] += 1
