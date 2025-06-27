@@ -729,33 +729,68 @@ async def create_ranking_image(guild, top_chatters, first_role, other_role, star
     # 프로필 이미지 처리
     async def get_high_quality_avatar(member, size, rank_index=None):
         try:
-            # 아바타가 설정되어 있는지 확인
+            avatar_image = None
+            
+            # 아바타가 설정되어 있는지 확인 (수정된 부분)
             if member.avatar:
-                avatar = await member.avatar.read()
-                avatar_image = Image.open(io.BytesIO(avatar)).convert('RGBA')
-            else:
+                try:
+                    # 프로필 이미지 URL 직접 사용
+                    avatar_url = member.avatar.url
+                    print(f"[집계] 멤버 {member.name}의 아바타 URL: {avatar_url}")
+                    
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(str(avatar_url)) as resp:
+                            if resp.status == 200:
+                                avatar_data = await resp.read()
+                                avatar_image = Image.open(io.BytesIO(avatar_data)).convert('RGBA')
+                                print(f"[집계] 멤버 {member.name}의 아바타 로드 성공 (HTTP)")
+                except Exception as avatar_error:
+                    print(f"[집계] HTTP로 아바타 로드 실패: {avatar_error}, member={member.name}, 이제 read() 시도")
+                    try:
+                        # 실패시 기존 방식 시도
+                        avatar = await member.avatar.read()
+                        avatar_image = Image.open(io.BytesIO(avatar)).convert('RGBA')
+                        print(f"[집계] 멤버 {member.name}의 아바타 로드 성공 (read)")
+                    except Exception as read_error:
+                        print(f"[집계] read()로도 아바타 로드 실패: {read_error}")
+                        avatar_image = None
+            
+            # 아바타 이미지가 없으면 기본 이미지 생성
+            if not avatar_image:
                 # 기본 아바타 - 디스코드 기본색 사용한 단색 이미지
+                print(f"[집계] 멤버 {member.name}의 아바타 없음, 기본 이미지 생성")
                 avatar_image = Image.new('RGBA', (size, size), (88, 101, 242, 255))  # 디스코드 컬러
                 
-                # 사용자 이름의 첫 글자(또는 식별자)를 중앙에 표시
-                from PIL import ImageDraw, ImageFont
-                draw = ImageDraw.Draw(avatar_image)
+                # 사용자 이름의 첫 글자를 중앙에 표시
                 try:
-                    # 이름의 첫 글자 또는 식별자
                     identifier = member.display_name[0].upper() if member.display_name else "#"
                     font_size = size // 2
-                    font = ImageFont.truetype(MAIN_FONT_PATH, font_size)
-                    text_width = draw.textlength(identifier, font=font)
+                    avatar_draw = ImageDraw.Draw(avatar_image)
+                    try:
+                        font = ImageFont.truetype(MAIN_FONT_PATH, font_size)
+                    except:
+                        # 폰트 로드 실패 시 기본 폰트 사용
+                        print(f"[집계] 폰트 로드 실패, PIL 기본 폰트 사용")
+                        from PIL import ImageFont
+                        font = ImageFont.load_default()
+                    
+                    text_width = avatar_draw.textlength(identifier, font=font)
                     text_height = font_size
-                    draw.text(
+                    avatar_draw.text(
                         ((size - text_width) // 2, (size - text_height) // 2), 
                         identifier, 
                         font=font, 
                         fill=(255, 255, 255, 255)
                     )
+                    print(f"[집계] 멤버 {member.name}의 기본 아바타에 '{identifier}' 텍스트 추가")
                 except Exception as text_error:
-                    print(f"기본 아바타에 텍스트 추가 오류: {text_error}")
+                    print(f"[집계] 기본 아바타에 텍스트 추가 실패: {text_error}")
             
+            # 이미지 리사이징
+            if avatar_image.size != (size, size):
+                avatar_image = avatar_image.resize((size, size), Image.Resampling.LANCZOS)
+            
+            # 아바타에 테두리 추가
             border_width = size // 25 if rank_index is not None and rank_index >= 2 else size // 35
             corner_radius = size // 5
             final_size = size + (border_width * 2)
@@ -788,22 +823,30 @@ async def create_ranking_image(guild, top_chatters, first_role, other_role, star
                                          inner_radius,
                                          fill=255)
 
-            avatar_image = avatar_image.resize((size, size), Image.Resampling.LANCZOS)
             masked_avatar = Image.new('RGBA', (size, size), (0, 0, 0, 0))
             masked_avatar.paste(avatar_image, (0, 0))
             masked_avatar.putalpha(inner_mask)
 
             final_image.paste(masked_avatar, (border_width, border_width), masked_avatar)
+            print(f"[집계] 멤버 {member.name}의 최종 아바타 이미지 생성 완료")
             return final_image
 
         except Exception as e:
-            print(f"Avatar processing error: {e}")
+            print(f"Avatar processing error for {member.name}: {e}")
             import traceback
             traceback.print_exc()
             
-            # 오류 발생 시 기본 색상의 이미지 반환
-            fallback_image = Image.new('RGBA', (size, size), (65, 70, 95, 255))
-            return fallback_image
+            # 오류 발생 시 대체 이미지 반환
+            try:
+                fallback_image = Image.new('RGBA', (size + border_width*2, size + border_width*2), (0, 0, 0, 0))
+                inner_img = Image.new('RGBA', (size, size), (65, 70, 95, 255))
+                fallback_image.paste(inner_img, (border_width, border_width))
+                print(f"[집계] 멤버 {member.name}의 대체 이미지 생성")
+                return fallback_image
+            except:
+                print(f"[집계] 대체 이미지 생성도 실패")
+                # 극단적 경우 - 아무런 처리 없이 빈 투명 이미지 반환
+                return Image.new('RGBA', (size + border_width*2, size + border_width*2), (0, 0, 0, 0))
 
     # 텍스트 렌더링 (테두리 두께 줄임)
     def draw_text_with_outline(x, y, text, font, main_color, outline_color=None, outline_width=3, is_name=False):
