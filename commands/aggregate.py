@@ -55,18 +55,142 @@ print(f"Python 모듈 경로: {sys.path}")
 @commands.has_permissions(administrator=True)
 async def 집계(inter: disnake.ApplicationCommandInteraction, start_date: str, end_date: str):
     try:
+        # 초기 응답 지연 (15초 타임아웃)
         await inter.response.defer(ephemeral=False, with_message=True)
+
+        guild_id = inter.guild.id
         
-        # 실제 집계 로직은 별도 함수로 분리
-        await execute_aggregate(
-            inter.channel,
+        if guild_id not in server_roles:
+            await inter.edit_original_response(content="❌ 역할이 설정되지 않았습니다. /역할설정 명령어를 사용하는 것이다.")
+            return
+
+        # KST 시간대 설정
+        kst = pytz.timezone('Asia/Seoul')
+        today = datetime.datetime.now(kst)
+
+        # 't' 입력 처리
+        if start_date.lower() == 't':
+            start_date = today.strftime("%Y%m%d")
+        if end_date.lower() == 't':
+            end_date = today.strftime("%Y%m%d")
+
+        try:
+            # 날짜 변환
+            start = datetime.datetime.strptime(start_date, "%Y%m%d")
+            end = datetime.datetime.strptime(end_date, "%Y%m%d")
+            
+            start_date = kst.localize(start.replace(hour=0, minute=0, second=0))
+            end_date = kst.localize(end.replace(hour=23, minute=59, second=59))
+            
+            start_date_utc = start_date.astimezone(pytz.UTC)
+            end_date_utc = end_date.astimezone(pytz.UTC)
+        except ValueError:
+            await inter.edit_original_response(
+                content="❌ 날짜 형식이 잘못되었습니다. yyyyMMdd 형식 또는 't'로 입력하는 것이다."
+            )
+            return
+
+        # 진행 상황 알림
+        await inter.edit_original_response(content="메시지를 조회 중인 것이다... ⏳")
+
+        # 메시지 조회
+        messages = get_messages_in_period(guild_id, start_date_utc, end_date_utc)
+        if not messages:
+            await inter.edit_original_response(
+                content=f"❌ 이 기간 동안 채팅 데이터가 없는 것이다.\n"
+                f"검색 기간: {start_date.strftime('%Y-%m-%d %H:%M')} ~ {end_date.strftime('%Y-%m-%d %H:%M')}"
+            )
+            return
+
+        # 채팅 카운트 계산
+        chat_counts = Counter(msg['user_id'] for msg in messages)
+        excluded_roles = server_excluded_roles.get(guild_id, [])
+        excluded_members = {member.id for member in inter.guild.members
+                            if any(role.id in excluded_roles for role in member.roles)}
+        
+        top_chatters = [(user_id, count) for user_id, count in chat_counts.most_common()
+                        if user_id not in excluded_members][:6]
+
+        if not top_chatters:
+            await inter.edit_original_response(content="❌ 집계할 수 있는 사용자가 없는 것이다.")
+            return
+
+        # 역할 업데이트
+        first_role = disnake.utils.get(inter.guild.roles, id=server_roles[guild_id]["first"])
+        other_role = disnake.utils.get(inter.guild.roles, id=server_roles[guild_id]["other"])
+
+        if not first_role or not other_role:
+            await inter.edit_original_response(content="❌ 설정된 역할을 찾을 수 없는 것이다.")
+            return
+
+        # 기존 역할 제거
+        for member in inter.guild.members:
+            if first_role in member.roles or other_role in member.roles:
+                await member.remove_roles(first_role, other_role)
+
+        # 1등 역할 원래 색상으로 복원 (추가된 부분)
+        original_color = restore_role_original_color(inter.guild, first_role)
+        if original_color:
+            await first_role.edit(color=disnake.Color(original_color))
+        
+        # 새 역할 부여 (1등만 first_role, 2-6등은 other_role)
+        for index, (user_id, _) in enumerate(top_chatters):
+            member = inter.guild.get_member(user_id)
+            if member:
+                if index == 0:  # 1등만
+                    await member.add_roles(first_role)
+                    role_type = "first"
+                else:  # 2-6등
+                    await member.add_roles(other_role)
+                    role_type = "other"
+                update_role_streak(guild_id, user_id, role_type)
+
+        # 진행 상황 알림
+        await inter.edit_original_response(content="이미지를 생성 중인 것이다... 🎨")
+
+        # 이미지 생성
+        image = await create_ranking_image(
             inter.guild,
-            inter.author,
-            start_date,
-            end_date,
-            inter=inter  # 인터랙션 객체 전달
+            top_chatters,
+            first_role,
+            other_role,
+            start_date=start_date_utc,
+            end_date=end_date_utc
         )
         
+        if image:
+            # 채팅 카운트 초기화
+            reset_chat_counts(guild_id)
+            
+            # 이미지 전송 및 마지막 집계 시간 저장
+            await inter.edit_original_response(
+                content=None,
+                file=disnake.File(fp=image, filename="ranking.png")
+            )
+            
+            # 현재 시간을 집계 날짜로 저장
+            now_utc = datetime.datetime.now(pytz.UTC)
+            save_last_aggregate_date(guild_id)
+            
+            # ===== 여기에 집계 기록 저장 코드 추가 =====
+            try:
+                # 집계 기록 저장
+                db.save_aggregate_history(
+                    guild_id=guild_id,
+                    aggregate_date=now_utc,
+                    start_date=start_date_utc,
+                    end_date=end_date_utc,
+                    top_chatters=top_chatters
+                )
+                print(f"[집계] 서버 {guild_id}의 집계 기록 저장 성공")
+            except Exception as history_error:
+                print(f"[집계] 집계 기록 저장 중 오류 발생: {history_error}")
+                import traceback
+                traceback.print_exc()
+            
+        else:
+            await inter.edit_original_response(content="❌ 이미지 생성에 실패한 것이다...")
+
     except disnake.errors.InteractionResponded:
         # 이미 응답된 인터랙션에 대해 추가 응답 시도 시
         await inter.followup.send("❌ 이미 응답이 완료된 것이다. 다시 시도하는 것이다.", ephemeral=True)
@@ -75,298 +199,12 @@ async def 집계(inter: disnake.ApplicationCommandInteraction, start_date: str, 
         await inter.channel.send("❌ 처리 시간이 초과된 것이다. 다시 시도하는 것이다.")
     except Exception as e:
         print(f"Aggregate command error: {e}")
-        import traceback
-        traceback.print_exc()
         try:
-            await inter.followup.send("❌ 오류가 발생한 것이다. 다시 시도하는 것이다. (E100)", ephemeral=True)
+            await inter.followup.send("❌ 오류가 발생한 것이다. 다시 시도하는 것이다.", ephemeral=True)
         except:
-            await inter.channel.send("❌ 오류가 발생한 것이다. 다시 시도하는 것이다. (E101)")
+            await inter.channel.send("❌ 오류가 발생한 것이다. 다시 시도하는 것이다.")
 
-
-# 실제 집계 로직을 별도 함수로 분리
-async def execute_aggregate(channel, guild, author, start_date, end_date, inter=None, update_message=None):
-    """
-    집계를 실행하는 공통 함수입니다.
-    
-    Parameters:
-    - channel: 메시지를 보낼 채널
-    - guild: 집계할 서버
-    - author: 명령어를 실행한 사용자
-    - start_date: 시작 날짜 ('d', 't', 또는 YYYYMMDD 형식)
-    - end_date: 종료 날짜 ('d', 't', 또는 YYYYMMDD 형식)
-    - inter: 슬래시 명령어 인터랙션 (있는 경우)
-    - update_message: 업데이트할 메시지 (텍스트 명령어에서 사용)
-    """
-    guild_id = guild.id
-    
-    # 메시지 업데이트 함수 (인터랙션 또는 일반 메시지)
-    async def update_status(content):
-        if inter:
-            try:
-                await inter.edit_original_response(content=content)
-            except Exception as e:
-                print(f"인터랙션 응답 업데이트 오류: {e}")
-                # 실패 시 followup 메시지로 시도
-                try:
-                    await inter.followup.send(content=content, ephemeral=False)
-                except Exception as follow_e:
-                    print(f"인터랙션 followup 응답 오류: {follow_e}")
-        elif update_message:
-            try:
-                await update_message.edit(content=content)
-            except Exception as e:
-                print(f"메시지 업데이트 오류: {e}")
-                try:
-                    await channel.send(content)
-                except Exception as send_e:
-                    print(f"채널 메시지 전송 오류: {send_e}")
-
-    # 역할 설정 확인 및 로드 시도
-    if guild_id not in server_roles:
-        print(f"[집계] 서버 {guild_id}의 역할 데이터가 메모리에 없음. DB에서 로드 시도.")
-        if db.is_mongo_connected():
-            try:
-                role_data_from_db = db.get_guild_role_data(guild_id)
-                if role_data_from_db:
-                    server_roles[guild_id] = role_data_from_db
-                    print(f"[집계] DB에서 역할 데이터 로드 성공: {role_data_from_db}")
-                else:
-                    await update_status("❌ 역할이 설정되지 않았습니다. `/역할설정` 명령어를 사용하는 것이다. (E102)")
-                    return
-            except Exception as db_error:
-                print(f"[집계] DB 접근 오류: {db_error}")
-                await update_status(f"❌ 역할 데이터 로드 중 오류가 발생한 것이다. (E103)")
-                return
-        else:
-            await update_status("❌ DB 연결 오류. 역할 설정을 확인할 수 없습니다. (E104)")
-            return
-    
-    # 다시 한번 확인
-    if guild_id not in server_roles:
-        await update_status("❌ 역할이 설정되지 않았습니다. `/역할설정` 명령어를 사용하는 것이다. (E105)")
-        return
-
-    # KST 시간대 설정
-    kst = pytz.timezone('Asia/Seoul')
-    today = datetime.datetime.now(kst)
-    
-    # 디버깅: 현재 시간 정보 출력
-    print(f"[집계] 현재 시간 (KST): {today.strftime('%Y-%m-%d %H:%M:%S.%f %z')}")
-    
-    # 마지막 집계 날짜 디버깅
-    last_aggregate_debug = db.get_last_aggregate_date(guild_id)
-    if last_aggregate_debug:
-        last_kst_debug = last_aggregate_debug.astimezone(kst)
-        print(f"[집계] 마지막 집계 시간 정보 - UTC: {last_aggregate_debug}")
-        print(f"[집계] 마지막 집계 시간 정보 - KST: {last_kst_debug}")
-        print(f"[집계] 마지막 집계 시간 포맷: {last_kst_debug.strftime('%Y%m%d %H:%M:%S %z')}")
-    else:
-        print(f"[집계] 서버 {guild_id}의 마지막 집계 기록이 없습니다.")
-    
-    start_datetime_obj_kst = None
-    end_datetime_obj_kst = None
-
-    # 시작 날짜 처리
-    if start_date.lower() == 't':
-        # 't'는 오늘 날짜를 의미 (00:00:00)
-        start_datetime_obj_kst = today.replace(hour=0, minute=0, second=0, microsecond=0)
-        print(f"[집계] 't' 옵션 사용 (시작): {start_datetime_obj_kst.strftime('%Y-%m-%d %H:%M:%S.%f %z')}")
-    elif start_date.lower() == 'd':
-        # 'd'는 마지막 집계 날짜를 의미
-        last_aggregate_db_utc = db.get_last_aggregate_date(guild_id)
-        if last_aggregate_db_utc:
-            # UTC에서 KST로 변환
-            start_datetime_obj_kst = last_aggregate_db_utc.astimezone(kst)
-            print(f"[집계] 'd' 옵션 사용 (시작): 마지막 집계 시간 {start_datetime_obj_kst.strftime('%Y-%m-%d %H:%M:%S.%f %z')}")
-            print(f"[집계] 원본 UTC 시간: {last_aggregate_db_utc}")
-        else:
-            print(f"[집계] 'd' 옵션 사용 오류: 마지막 집계 기록이 없음 (guild_id: {guild_id})")
-            
-            # DB에 직접 조회하여 더 상세한 정보 확인
-            try:
-                doc = db.aggregate_dates_collection.find_one({"guild_id": guild_id})
-                print(f"[집계] DB 직접 조회 결과: {doc}")
-            except Exception as db_err:
-                print(f"[집계] DB 직접 조회 오류: {db_err}")
-            
-            await update_status(
-                "❌ 'd' 옵션을 사용하려면 이전에 집계 기록이 있어야 하는 것이다.\n"
-                "→ 과거에 `/집계` 명령어를 실행한 적이 없는 것으로 보인다."
-            )
-            return
-    else:
-        try:
-            # 일반 날짜 형식 처리 (YYYYMMDD)
-            start_datetime_obj_kst = kst.localize(datetime.datetime.strptime(start_date, "%Y%m%d").replace(hour=0, minute=0, second=0))
-            print(f"[집계] 일반 날짜 파싱 (시작): {start_date} → {start_datetime_obj_kst.strftime('%Y-%m-%d %H:%M:%S.%f %z')}")
-        except ValueError as e:
-            print(f"[집계] 날짜 파싱 오류 (시작): {e}, 입력값: {start_date}")
-            await update_status(
-                f"❌ 시작 날짜 형식이 잘못되었습니다. yyyyMMdd 형식(예: 20230101) 또는 't'(오늘) 또는 'd'(마지막 집계일)로 입력하는 것이다.\n→ 잘못된 입력: {start_date}"
-            )
-            return
-    
-    # 종료 날짜 처리
-    if end_date.lower() == 't':
-        # 't'는 오늘 날짜의 끝을 의미 (23:59:59)
-        end_datetime_obj_kst = today.replace(hour=23, minute=59, second=59, microsecond=999999)
-        print(f"[집계] 't' 옵션 사용 (종료): {end_datetime_obj_kst.strftime('%Y-%m-%d %H:%M:%S.%f %z')}")
-    elif end_date.lower() == 'd':
-        # 'd'는 마지막 집계 날짜를 의미
-        last_aggregate_db_utc = db.get_last_aggregate_date(guild_id)
-        if last_aggregate_db_utc:
-            # 마지막 집계 날짜(시간까지 포함)
-            end_datetime_obj_kst = last_aggregate_db_utc.astimezone(kst)
-            print(f"[집계] 'd' 옵션 사용 (종료): 마지막 집계 시간 {end_datetime_obj_kst.strftime('%Y-%m-%d %H:%M:%S.%f %z')}")
-            print(f"[집계] 원본 UTC 시간: {last_aggregate_db_utc}")
-        else:
-            print(f"[집계] 'd' 옵션 사용 오류: 마지막 집계 기록이 없음 (guild_id: {guild_id})")
-            await update_status(
-                "❌ 'd' 옵션을 사용하려면 이전에 집계 기록이 있어야 하는 것이다.\n"
-                "→ 과거에 `/집계` 명령어를 실행한 적이 없는 것으로 보인다."
-            )
-            return
-    else:
-        try:
-            # 일반 날짜 형식 처리 (YYYYMMDD)
-            end_datetime_obj_kst = kst.localize(datetime.datetime.strptime(end_date, "%Y%m%d").replace(hour=23, minute=59, second=59))
-            print(f"[집계] 일반 날짜 파싱 (종료): {end_date} → {end_datetime_obj_kst.strftime('%Y-%m-%d %H:%M:%S.%f %z')}")
-        except ValueError as e:
-            print(f"[집계] 날짜 파싱 오류 (종료): {e}, 입력값: {end_date}")
-            await update_status(
-                f"❌ 종료 날짜 형식이 잘못되었습니다. yyyyMMdd 형식(예: 20230101) 또는 't'(오늘) 또는 'd'(마지막 집계일)로 입력하는 것이다.\n→ 잘못된 입력: {end_date}"
-            )
-            return
-
-    # UTC로 변환
-    start_date_utc = start_datetime_obj_kst.astimezone(pytz.UTC)
-    end_date_utc = end_datetime_obj_kst.astimezone(pytz.UTC)
-    
-    print(f"[집계] 변환된 UTC 시간 - 시작: {start_date_utc}")
-    print(f"[집계] 변환된 UTC 시간 - 종료: {end_date_utc}")
-
-    if start_date_utc > end_date_utc:
-        print(f"[집계] 시작 시간이 종료 시간보다 늦음: {start_date_utc} > {end_date_utc}")
-        await update_status(
-            "❌ 시작 시간이 종료 시간보다 늦을 수 없는 것이다."
-        )
-        return
-
-    # 진행 상황 알림 - 날짜 범위 표시 포맷 개선
-    date_format = '%Y년 %m월 %d일 %H시 %M분'
-    start_display = start_datetime_obj_kst.strftime(date_format)
-    end_display = end_datetime_obj_kst.strftime(date_format)
-
-    # 특별 키워드('t', 'd')가 사용된 경우 해당 정보도 함께 표시
-    start_keyword = f" ('{start_date}')" if start_date.lower() in ['t', 'd'] else ""
-    end_keyword = f" ('{end_date}')" if end_date.lower() in ['t', 'd'] else ""
-    
-    await update_status(
-        f"메시지를 조회 중인 것이다... ⏳\n"
-        f"기간: {start_display}{start_keyword} ~ {end_display}{end_keyword}"
-    )
-
-    # 메시지 조회
-    messages = get_messages_in_period(guild_id, start_date_utc, end_date_utc)
-    print(f"[집계] 조회된 메시지 수: {len(messages) if messages else 0}")
-    
-    if not messages:
-        await update_status(
-            f"❌ 이 기간 동안 채팅 데이터가 없는 것이다.\n"
-            f"검색 기간: {start_display}{start_keyword} ~ {end_display}{end_keyword}"
-        )
-        return
-
-    # 채팅 카운트 계산
-    chat_counts = Counter(msg['user_id'] for msg in messages)
-    excluded_roles = server_excluded_roles.get(guild_id, [])
-    excluded_members = {member.id for member in guild.members
-                        if any(role.id in excluded_roles for role in member.roles)}
-    
-    top_chatters = [(user_id, count) for user_id, count in chat_counts.most_common()
-                    if user_id not in excluded_members][:6]
-
-    if not top_chatters:
-        await update_status("❌ 집계할 수 있는 사용자가 없는 것이다.")
-        return
-
-    # 역할 업데이트
-    first_role = disnake.utils.get(guild.roles, id=server_roles[guild_id]["first"])
-    other_role = disnake.utils.get(guild.roles, id=server_roles[guild_id]["other"])
-
-    if not first_role or not other_role:
-        await update_status("❌ 설정된 역할을 찾을 수 없는 것이다.")
-        return
-
-    # 기존 역할 제거
-    for member in guild.members:
-        if first_role in member.roles or other_role in member.roles:
-            await member.remove_roles(first_role, other_role)
-
-    # 1등 역할 원래 색상으로 복원
-    original_color = restore_role_original_color(guild, first_role)
-    if original_color:
-        await first_role.edit(color=disnake.Color(original_color))
-    
-    # 새 역할 부여 (1등만 first_role, 2-6등은 other_role)
-    for index, (user_id, _) in enumerate(top_chatters):
-        member = guild.get_member(user_id)
-        if member:
-            if index == 0:  # 1등만
-                await member.add_roles(first_role)
-                role_type = "first"
-            else:  # 2-6등
-                await member.add_roles(other_role)
-                role_type = "other"
-            update_role_streak(guild_id, user_id, role_type)
-
-    # 진행 상황 알림
-    await update_status("결과를 확인하고 있는 것이다... ")
-
-    # 이미지 생성
-    image = await create_ranking_image(
-        guild,
-        top_chatters,
-        first_role,
-        other_role,
-        start_date=start_datetime_obj_kst, # KST datetime 객체 전달
-        end_date=end_datetime_obj_kst     # KST datetime 객체 전달
-    )
-    
-    if image:
-        # 채팅 카운트 초기화
-        reset_chat_counts(guild_id)
-        
-        # 이미지 전송 및 마지막 집계 시간 저장
-        if inter:
-            await inter.edit_original_response(
-                content=None,
-                file=disnake.File(fp=image, filename="ranking.png")
-            )
-        else:
-            # 텍스트 명령어의 경우 메시지 업데이트
-            if update_message:
-                try:
-                    await update_message.delete()  # 기존 메시지 삭제
-                except:
-                    pass  # 메시지 삭제 실패해도 계속 진행
-            # 새 메시지로 이미지 전송
-            await channel.send(file=disnake.File(fp=image, filename="ranking.png"))
-        
-        # 마지막 집계 시간 저장
-        save_last_aggregate_date(guild_id)
-        
-        # 저장 후 검증
-        new_last_date = db.get_last_aggregate_date(guild_id)
-        if new_last_date:
-            print(f"[집계] 새로 저장된 마지막 집계 시간: {new_last_date.astimezone(kst)}")
-        else:
-            print(f"[집계] 경고: 마지막 집계 시간이 저장되지 않았습니다.")
-            
-    else:
-        await update_status("❌ 이미지 생성에 실패한 것이다...")
-
-async def create_ranking_image(guild, top_chatters, first_role, other_role, start_date, end_date): # start_date, end_date는 KST datetime 객체
+async def create_ranking_image(guild, top_chatters, first_role, other_role, start_date, end_date):
     width, height = 920, 1050
     
     # 기본 캔버스 생성
@@ -729,68 +567,9 @@ async def create_ranking_image(guild, top_chatters, first_role, other_role, star
     # 프로필 이미지 처리
     async def get_high_quality_avatar(member, size, rank_index=None):
         try:
-            avatar_image = None
+            avatar = await member.avatar.read()
+            avatar_image = Image.open(io.BytesIO(avatar)).convert('RGBA')
             
-            # 아바타가 설정되어 있는지 확인 (수정된 부분)
-            if member.avatar:
-                try:
-                    # 프로필 이미지 URL 직접 사용
-                    avatar_url = member.avatar.url
-                    print(f"[집계] 멤버 {member.name}의 아바타 URL: {avatar_url}")
-                    
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(str(avatar_url)) as resp:
-                            if resp.status == 200:
-                                avatar_data = await resp.read()
-                                avatar_image = Image.open(io.BytesIO(avatar_data)).convert('RGBA')
-                                print(f"[집계] 멤버 {member.name}의 아바타 로드 성공 (HTTP)")
-                except Exception as avatar_error:
-                    print(f"[집계] HTTP로 아바타 로드 실패: {avatar_error}, member={member.name}, 이제 read() 시도")
-                    try:
-                        # 실패시 기존 방식 시도
-                        avatar = await member.avatar.read()
-                        avatar_image = Image.open(io.BytesIO(avatar)).convert('RGBA')
-                        print(f"[집계] 멤버 {member.name}의 아바타 로드 성공 (read)")
-                    except Exception as read_error:
-                        print(f"[집계] read()로도 아바타 로드 실패: {read_error}")
-                        avatar_image = None
-            
-            # 아바타 이미지가 없으면 기본 이미지 생성
-            if not avatar_image:
-                # 기본 아바타 - 디스코드 기본색 사용한 단색 이미지
-                print(f"[집계] 멤버 {member.name}의 아바타 없음, 기본 이미지 생성")
-                avatar_image = Image.new('RGBA', (size, size), (88, 101, 242, 255))  # 디스코드 컬러
-                
-                # 사용자 이름의 첫 글자를 중앙에 표시
-                try:
-                    identifier = member.display_name[0].upper() if member.display_name else "#"
-                    font_size = size // 2
-                    avatar_draw = ImageDraw.Draw(avatar_image)
-                    try:
-                        font = ImageFont.truetype(MAIN_FONT_PATH, font_size)
-                    except:
-                        # 폰트 로드 실패 시 기본 폰트 사용
-                        print(f"[집계] 폰트 로드 실패, PIL 기본 폰트 사용")
-                        from PIL import ImageFont
-                        font = ImageFont.load_default()
-                    
-                    text_width = avatar_draw.textlength(identifier, font=font)
-                    text_height = font_size
-                    avatar_draw.text(
-                        ((size - text_width) // 2, (size - text_height) // 2), 
-                        identifier, 
-                        font=font, 
-                        fill=(255, 255, 255, 255)
-                    )
-                    print(f"[집계] 멤버 {member.name}의 기본 아바타에 '{identifier}' 텍스트 추가")
-                except Exception as text_error:
-                    print(f"[집계] 기본 아바타에 텍스트 추가 실패: {text_error}")
-            
-            # 이미지 리사이징
-            if avatar_image.size != (size, size):
-                avatar_image = avatar_image.resize((size, size), Image.Resampling.LANCZOS)
-            
-            # 아바타에 테두리 추가
             border_width = size // 25 if rank_index is not None and rank_index >= 2 else size // 35
             corner_radius = size // 5
             final_size = size + (border_width * 2)
@@ -823,30 +602,17 @@ async def create_ranking_image(guild, top_chatters, first_role, other_role, star
                                          inner_radius,
                                          fill=255)
 
+            avatar_image = avatar_image.resize((size, size), Image.Resampling.LANCZOS)
             masked_avatar = Image.new('RGBA', (size, size), (0, 0, 0, 0))
             masked_avatar.paste(avatar_image, (0, 0))
             masked_avatar.putalpha(inner_mask)
 
             final_image.paste(masked_avatar, (border_width, border_width), masked_avatar)
-            print(f"[집계] 멤버 {member.name}의 최종 아바타 이미지 생성 완료")
             return final_image
 
         except Exception as e:
-            print(f"Avatar processing error for {member.name}: {e}")
-            import traceback
-            traceback.print_exc()
-            
-            # 오류 발생 시 대체 이미지 반환
-            try:
-                fallback_image = Image.new('RGBA', (size + border_width*2, size + border_width*2), (0, 0, 0, 0))
-                inner_img = Image.new('RGBA', (size, size), (65, 70, 95, 255))
-                fallback_image.paste(inner_img, (border_width, border_width))
-                print(f"[집계] 멤버 {member.name}의 대체 이미지 생성")
-                return fallback_image
-            except:
-                print(f"[집계] 대체 이미지 생성도 실패")
-                # 극단적 경우 - 아무런 처리 없이 빈 투명 이미지 반환
-                return Image.new('RGBA', (size + border_width*2, size + border_width*2), (0, 0, 0, 0))
+            print(f"Avatar processing error: {e}")
+            return Image.new('RGBA', (size, size), (65, 70, 95, 255))
 
     # 텍스트 렌더링 (테두리 두께 줄임)
     def draw_text_with_outline(x, y, text, font, main_color, outline_color=None, outline_width=3, is_name=False):
@@ -1073,31 +839,20 @@ async def create_ranking_image(guild, top_chatters, first_role, other_role, star
     # 집계 시간과 기간 표시 (수정된 부분)
     now_utc = datetime.datetime.now(pytz.utc)
     now_kst = now_utc.astimezone(pytz.timezone('Asia/Seoul'))
+    start_kst = start_date.astimezone(pytz.timezone('Asia/Seoul'))
+    end_kst = end_date.astimezone(pytz.timezone('Asia/Seoul'))
     
-    # start_date와 end_date는 이미 KST datetime 객체
+    days_diff = (end_kst.date() - start_kst.date()).days + 1
+    start_str = start_kst.strftime("%y/%m/%d")
+    end_str = end_kst.strftime("%y/%m/%d")
     
-    # 기간 표시 문자열 생성
-    # start_date와 end_date가 같은 날짜이고, 시간까지 동일하면 해당 시간만 표시
-    if start_date.date() == end_date.date() and start_date.time() == end_date.time():
-        period_str_display = start_date.strftime("%y/%m/%d %H:%M")
-        days_diff_str = "(특정 시점)"
-    elif start_date.date() == end_date.date(): # 같은 날짜, 다른 시간
-        period_str_display = f"{start_date.strftime('%y/%m/%d %H:%M')} ~ {end_date.strftime('%H:%M')}"
-        time_delta_for_days = end_date - start_date
-        days_diff_str = f"({(time_delta_for_days.total_seconds() / 3600):.1f}시간)"
-    else: # 다른 날짜
-        period_str_display = f"{start_date.strftime('%y/%m/%d %H:%M')} ~ {end_date.strftime('%y/%m/%d %H:%M')}"
-        # 날짜 차이 계산 (단순 일수 차이)
-        days_diff = (end_date.date() - start_date.date()).days
-        days_diff_str = f"({days_diff + 1}일)"
-
     hour_str = "오전" if now_kst.hour < 12 else "오후"
     hour_12 = now_kst.hour if now_kst.hour <= 12 else now_kst.hour - 12
     if hour_12 == 0:
         hour_12 = 12
     time_str = f"{now_kst.strftime('%Y/%m/%d')} {hour_str} {hour_12}시 {now_kst.strftime('%M분 %S초')}"
     
-    period_str = f"집계 기간: {period_str_display} {days_diff_str}"
+    period_str = f"집계 기간: {start_str} ~ {end_str} ({days_diff}일)"
     time_color = (220, 220, 220)  # 연한 흰색으로 변경
     
     # 테두리 없이 심플하게 텍스트만 표시

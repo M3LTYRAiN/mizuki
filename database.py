@@ -2,11 +2,6 @@ import os
 from dotenv import load_dotenv
 import pymongo
 from datetime import datetime, timezone  # timezone 추가
-import warnings
-import pytz  # 시간대 모듈 추가 확인 및 기본 시간대 설정
-
-# MongoDB 관련 경고 무시
-warnings.filterwarnings("ignore", message="datetime.datetime.utcfromtimestamp.*is deprecated")
 
 # 환경 변수 로드
 load_dotenv()
@@ -36,6 +31,25 @@ if (MONGO_URI and not DEVELOPMENT_MODE):
         auth_codes_collection = db.auth_codes
         authorized_guilds_collection = db.authorized_guilds
 
+        # 집계 기록 컬렉션 추가
+        aggregate_history_collection = db.aggregate_history
+
+        # 인덱스 확인 및 생성
+        try:
+            # 집계 기록 컬렉션 인덱스
+            index_info = aggregate_history_collection.index_information()
+            
+            # guild_id + aggregate_date 복합 인덱스 (조회 성능 향상)
+            if "guild_id_1_aggregate_date_-1" not in index_info:
+                aggregate_history_collection.create_index(
+                    [("guild_id", 1), ("aggregate_date", -1)],
+                    background=True
+                )
+                print("집계 기록 컬렉션 인덱스 생성 완료")
+                
+        except Exception as index_error:
+            print(f"인덱스 생성 중 오류: {index_error}")
+
         print("MongoDB 연결 성공!")
         print(f"사용 가능한 데이터베이스: {client.list_database_names()}")
         print(f"컬렉션: {db.list_collection_names()}")
@@ -52,57 +66,19 @@ else:
 def is_mongo_connected():
     return db is not None
 
-# 역할 데이터 로드 함수 개선
+# 역할 데이터 로드
 def load_role_data():
-    """모든 서버의 역할 설정 데이터를 로드합니다"""
     if not is_mongo_connected():
-        print("⚠️ MongoDB에 연결되지 않아 역할 데이터를 로드할 수 없습니다")
         return {}
-    
-    try:
-        print("🔍 역할 데이터 로드 시작")
-        result = {}
-        
-        # MongoDB에서 현재 컬렉션 항목 수 조회
-        total_docs = roles_collection.count_documents({})
-        print(f"🔢 MongoDB에서 {total_docs}개의 역할 문서 발견")
-        
-        # 모든 문서 조회
-        cursor = roles_collection.find()
-        loaded_count = 0
-        
-        print("🔄 역할 데이터 상세 로그:")
-        for doc in cursor:
-            try:
-                # 원본 데이터 출력
-                print(f"  - 원본 문서: {doc}")
-                
-                # 명시적 타입 변환 - 문자열이든 정수든 정수로 통일
-                try:
-                    guild_id = int(doc["guild_id"])
-                    first_role_id = int(doc["first_role_id"])
-                    other_role_id = int(doc["other_role_id"])
-                except (ValueError, TypeError):
-                    print(f"  ❌ ID 변환 실패: {doc}")
-                    continue
-                
-                result[guild_id] = {
-                    "first": first_role_id,
-                    "other": other_role_id
-                }
-                loaded_count += 1
-                print(f"  ✅ 변환된 데이터: 서버 {guild_id}, 역할: {result[guild_id]}")
-            except (KeyError, ValueError, TypeError) as e:
-                print(f"  ⚠️ 역할 데이터 처리 중 오류: {e}, 문서: {doc}")
-                continue
-                
-        print(f"🔄 총 {loaded_count}개 역할 데이터 로드 완료")
-        return result
-    except Exception as e:
-        print(f"⚠️ 역할 데이터 로드 중 오류: {e}")
-        import traceback
-        traceback.print_exc()
-        return {}
+
+    result = {}
+    for doc in roles_collection.find():
+        guild_id = doc["guild_id"]
+        result[guild_id] = {
+            "first": doc["first_role_id"],
+            "other": doc["other_role_id"]
+        }
+    return result
 
 # 역할 데이터 저장
 def save_role_data(guild_id, first_role_id, other_role_id):
@@ -120,40 +96,36 @@ def save_role_data(guild_id, first_role_id, other_role_id):
         upsert=True
     )
 
-# 제외 역할 로드 함수 개선
+# 제외 역할 로드
 def load_excluded_role_data():
-    """모든 서버의 제외 역할 데이터를 로드합니다"""
     if not is_mongo_connected():
         print("⚠️ MongoDB에 연결되지 않아 제외 역할을 로드할 수 없습니다")
         return {}
-    
+
+    result = {}
     try:
-        print("🔍 제외 역할 데이터 로드 시작")
-        total_docs = excluded_roles_collection.count_documents({})
-        print(f"MongoDB에서 {total_docs}개의 제외 역할 문서 발견")
-        
-        # 서버별 제외 역할 ID 수동 집계 (pipeline 사용 대신)
-        result = {}
-        cursor = excluded_roles_collection.find()
-        
-        for doc in cursor:
-            try:
-                # 명시적 타입 변환으로 일관성 유지
-                guild_id = int(doc["guild_id"])
-                role_id = int(doc["role_id"])
-                
-                if guild_id not in result:
-                    result[guild_id] = []
-                
-                result[guild_id].append(role_id)
-            except (KeyError, ValueError, TypeError) as e:
-                print(f"⚠️ 제외 역할 데이터 처리 중 오류: {e}, 문서: {doc}")
-                continue
-        
-        print(f"제외 역할 로드 완료: {len(result)}개 서버")
+        # 집계 쿼리를 사용하여 서버별 역할 목록 한번에 가져오기
+        pipeline = [
+            {"$group": {"_id": "$guild_id", "role_ids": {"$push": "$role_id"}}}
+        ]
+
+        # 결과 처리
+        for doc in excluded_roles_collection.aggregate(pipeline):
+            guild_id = doc["_id"]  # guild_id가 _id로 그룹화됨
+            result[guild_id] = doc["role_ids"]
+
+        # 로그 추가
+        guild_count = len(result)
+        role_count = sum(len(roles) for roles in result.values())
+        print(f"제외 역할 로드 완료: {guild_count}개 서버, 총 {role_count}개 역할")
+
+        # 처음 몇 개의 서버만 상세 정보 출력
+        for guild_id, roles in list(result.items())[:3]:
+            print(f"  서버 {guild_id}: {len(roles)}개 제외 역할 - {roles}")
+
         return result
     except Exception as e:
-        print(f"⚠️ 제외 역할 데이터 로드 중 오류: {e}")
+        print(f"⚠️ 제외 역할 로드 중 오류 발생: {e}")
         import traceback
         traceback.print_exc()
         return {}
@@ -161,96 +133,50 @@ def load_excluded_role_data():
 # 제외 역할 저장
 def save_excluded_role_data(guild_id, excluded_roles):
     if not is_mongo_connected():
-        print(f"⚠️ MongoDB에 연결되지 않아 제외 역할을 저장할 수 없습니다 (길드: {guild_id})")
         return
 
-    try:
-        # 기존 데이터 삭제
-        delete_result = excluded_roles_collection.delete_many({"guild_id": guild_id})
-        
-        # 새 데이터 저장
-        if excluded_roles:
-            documents = [
-                {"guild_id": guild_id, "role_id": role_id, "updated_at": datetime.now(timezone.utc)}
-                for role_id in excluded_roles
-            ]
-            insert_result = excluded_roles_collection.insert_many(documents)
-            print(f"제외 역할 저장 완료: 길드 {guild_id}, {len(excluded_roles)}개 역할, 삭제: {delete_result.deleted_count}개, 삽입: {len(insert_result.inserted_ids)}개")
-        else:
-            print(f"제외 역할 초기화: 길드 {guild_id}, 삭제: {delete_result.deleted_count}개")
-    except Exception as e:
-        print(f"⚠️ 제외 역할 저장 중 오류 발생: {e}")
-        import traceback
-        traceback.print_exc()
+    # 기존 데이터 삭제
+    excluded_roles_collection.delete_many({"guild_id": guild_id})
 
-# 채팅 카운트 로드 함수 개선
+    # 새 데이터 저장
+    if excluded_roles:
+        documents = [
+            {"guild_id": guild_id, "role_id": role_id, "updated_at": datetime.now(timezone.utc)}  # 수정
+            for role_id in excluded_roles
+        ]
+        excluded_roles_collection.insert_many(documents)
+
+# 채팅 카운트 로드
 def load_chat_counts():
     if not is_mongo_connected():
-        print("⚠️ MongoDB에 연결되지 않아 채팅 카운트를 로드할 수 없습니다")
         return {}
 
     result = {}
-    try:
-        print("🔄 채팅 카운트 로드 시작...")
-        # 전체 채팅 카운트 문서 수 확인
-        total_docs = chat_counts_collection.count_documents({})
-        print(f"MongoDB에 총 {total_docs}개의 채팅 카운트 문서가 있습니다")
-        
-        # 모든 문서 조회
-        cursor = chat_counts_collection.find()
-        guilds_count = 0
-        users_count = 0
-        
-        for doc in cursor:
-            guild_id = doc["guild_id"]
-            user_id = doc["user_id"]
-            count = doc["count"]
+    for doc in chat_counts_collection.find():
+        guild_id = doc["guild_id"]
+        user_id = doc["user_id"]
+        count = doc["count"]
 
-            if guild_id not in result:
-                result[guild_id] = {}
-                guilds_count += 1
-                
-            result[guild_id][user_id] = count
-            users_count += 1
-            
-        print(f"✅ 채팅 카운트 로드 완료: {guilds_count}개 서버, {users_count}명의 사용자")
-        
-        # 일부 서버의 사용자 수 출력 (디버깅)
-        for guild_id in list(result.keys())[:3]:
-            user_count = len(result[guild_id])
-            print(f"  서버 {guild_id}: {user_count}명의 사용자")
-            
-        return result
-    except Exception as e:
-        print(f"⚠️ 채팅 카운트 로드 중 오류 발생: {e}")
-        import traceback
-        traceback.print_exc()
-        return {}
+        if guild_id not in result:
+            result[guild_id] = {}
+        result[guild_id][user_id] = count
+    return result
 
-# 채팅 카운트 저장 함수 개선
+# 채팅 카운트 저장
 def save_chat_count(guild_id, user_id, count):
-    """사용자의 채팅 카운트를 저장합니다"""
     if not is_mongo_connected():
-        print(f"⚠️ MongoDB에 연결되지 않아 채팅 카운트를 저장할 수 없습니다: 서버 {guild_id}, 사용자 {user_id}")
-        return False
-    
-    try:
-        chat_counts_collection.update_one(
-            {"guild_id": guild_id, "user_id": user_id},
-            {"$set": {
-                "guild_id": guild_id,
-                "user_id": user_id,
-                "count": count,
-                "updated_at": datetime.now(timezone.utc)
-            }},
-            upsert=True
-        )
-        return True
-    except Exception as e:
-        print(f"⚠️ 채팅 카운트 저장 중 오류 발생: 서버 {guild_id}, 사용자 {user_id}, 오류: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
+        return
+
+    chat_counts_collection.update_one(
+        {"guild_id": guild_id, "user_id": user_id},
+        {"$set": {
+            "guild_id": guild_id,
+            "user_id": user_id,
+            "count": count,
+            "updated_at": datetime.now(timezone.utc)  # 수정
+        }},
+        upsert=True
+    )
 
 def save_message(guild_id, user_id, message_id, timestamp):
     """메시지를 MongoDB에 저장합니다"""
@@ -278,53 +204,30 @@ def get_messages_in_period(guild_id, start_date, end_date):
 
     return [{"user_id": doc["user_id"]} for doc in cursor]
 
-# 추가: 집계 날짜 저장 함수 수정
+# 추가: 집계 날짜 저장 함수
 def save_last_aggregate_date(guild_id):
     """마지막 집계 날짜를 저장합니다"""
     if not is_mongo_connected():
         return
 
-    # 현재 시간을 UTC로 명시적 변환하여 저장
-    now = datetime.now(timezone.utc)
-    
-    # 저장 전 로그 추가
-    print(f"[집계일] 저장하는 시간 (UTC): {now}")
-    print(f"[집계일] 저장하는 시간 (KST): {now.astimezone(pytz.timezone('Asia/Seoul'))}")
-
     aggregate_dates_collection.update_one(
         {"guild_id": guild_id},
         {"$set": {
             "guild_id": guild_id,
-            "last_aggregate_date": now,
-            "updated_at": now
+            "last_aggregate_date": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc)
         }},
         upsert=True
     )
 
-# 추가: 집계 날짜 조회 함수 수정
+# 추가: 집계 날짜 조회 함수
 def get_last_aggregate_date(guild_id):
     """마지막 집계 날짜를 조회합니다"""
     if not is_mongo_connected():
         return None
 
     doc = aggregate_dates_collection.find_one({"guild_id": guild_id})
-    
-    # 날짜 검증 및 로깅 추가
-    if doc and "last_aggregate_date" in doc:
-        date_obj = doc["last_aggregate_date"]
-        if isinstance(date_obj, datetime):
-            # 시간대 정보 확인 및 로깅
-            if date_obj.tzinfo is None:
-                print(f"[집계일] 경고: 시간대 정보 없음, UTC로 가정합니다: {date_obj}")
-                date_obj = date_obj.replace(tzinfo=timezone.utc)
-            else:
-                print(f"[집계일] 시간대 정보 있음: {date_obj.tzinfo}")
-                
-            print(f"[집계일] 조회된 시간 (UTC): {date_obj}")
-            print(f"[집계일] 조회된 시간 (KST): {date_obj.astimezone(pytz.timezone('Asia/Seoul'))}")
-            return date_obj
-            
-    return None
+    return doc["last_aggregate_date"] if doc else None
 
 # 추가: 채팅 카운트 초기화 함수
 def reset_chat_counts(guild_id):
@@ -333,30 +236,6 @@ def reset_chat_counts(guild_id):
         return
 
     chat_counts_collection.delete_many({"guild_id": guild_id})
-
-# 특정 서버의 채팅 카운트만 로드하는 함수 추가
-def get_guild_chat_counts(guild_id):
-    """특정 서버의 채팅 카운트만 로드합니다"""
-    if not is_mongo_connected():
-        print(f"⚠️ MongoDB에 연결되지 않아 서버 {guild_id}의 채팅 카운트를 로드할 수 없습니다")
-        return {}
-    
-    try:
-        result = {}
-        cursor = chat_counts_collection.find({"guild_id": guild_id})
-        
-        for doc in cursor:
-            user_id = doc["user_id"]
-            count = doc["count"]
-            result[user_id] = count
-            
-        print(f"서버 {guild_id}의 채팅 카운트 {len(result)}개 로드 완료")
-        return result
-    except Exception as e:
-        print(f"⚠️ 서버 {guild_id}의 채팅 카운트 로드 중 오류 발생: {e}")
-        import traceback
-        traceback.print_exc()
-        return {}
 
 # 추가: 역할 연속 기록 조회 함수
 def get_role_streak(guild_id, user_id):
@@ -413,6 +292,12 @@ def reset_role_streaks(guild_id):
 # 추가: 인증 코드 생성 함수
 def generate_auth_code():
     """16자리 무작위 인증 코드를 생성합니다"""
+    if not is_mongo_connected():
+        return None
+
+    import random
+    import string
+
     if not is_mongo_connected():
         return None
 
@@ -515,93 +400,101 @@ def delete_auth_code(code):
     result = auth_codes_collection.delete_one({"code": code})
     return result.deleted_count > 0
 
-# 특정 서버의 역할 데이터만 로드하는 함수
-def get_guild_role_data(guild_id):
-    """특정 서버의 역할 데이터를 로드합니다"""
+# 새로운 함수: 집계 기록 저장
+def save_aggregate_history(guild_id, aggregate_date, start_date, end_date, top_chatters):
+    """집계 결과를 저장합니다"""
     if not is_mongo_connected():
-        print(f"⚠️ MongoDB에 연결되지 않아 서버 {guild_id}의 역할 데이터를 로드할 수 없습니다")
-        return None
-    
+        print(f"⚠️ MongoDB에 연결되지 않아 집계 기록을 저장할 수 없습니다 (길드: {guild_id})")
+        return False
+        
     try:
-        doc = roles_collection.find_one({"guild_id": guild_id})
-        if doc:
-            return {
-                "first": int(doc["first_role_id"]),
-                "other": int(doc["other_role_id"])
-            }
-        return None
-    except Exception as e:
-        print(f"⚠️ 서버 {guild_id}의 역할 데이터 로드 중 오류: {e}")
-        return None
+        # top_chatters는 [(user_id, count), ...] 형태로 전달됨
+        formatted_chatters = []
+        for rank, (user_id, count) in enumerate(top_chatters, 1):
+            # 첫 번째 사용자는 first 역할, 나머지는 other 역할
+            role_type = "first" if rank == 1 else "other"
+            formatted_chatters.append({
+                "user_id": user_id,
+                "count": count,
+                "rank": rank,
+                "role_type": role_type
+            })
+        
+        # 문서 생성 및 저장
+        document = {
+            "guild_id": guild_id,
+            "aggregate_date": aggregate_date,
+            "start_date": start_date,
+            "end_date": end_date,
+            "top_chatters": formatted_chatters,
+            "created_at": datetime.now(timezone.utc)
 
-# 특정 서버의 제외 역할 데이터만 로드하는 함수
-def get_guild_excluded_roles(guild_id):
-    """특정 서버의 제외 역할을 로드합니다"""
-    if not is_mongo_connected():
-        print(f"⚠️ MongoDB에 연결되지 않아 서버 {guild_id}의 제외 역할을 로드할 수 없습니다")
-        return []
-    
-    try:
-        cursor = excluded_roles_collection.find({"guild_id": guild_id})
-        excluded_roles = []
-        
-        for doc in cursor:
-            try:
-                excluded_roles.append(int(doc["role_id"]))
-            except (KeyError, ValueError, TypeError):
-                continue
-                
-        print(f"서버 {guild_id}의 제외 역할 {len(excluded_roles)}개 로드")
-        return excluded_roles
-    except Exception as e:
-        print(f"⚠️ 서버 {guild_id}의 제외 역할 데이터 로드 중 오류: {e}")
-        return []
-
-# MongoDB 디버그 함수 추가
-def debug_mongodb_data():
-    """MongoDB 컬렉션 및 데이터에 대한 디버그 정보를 출력합니다"""
-    if not is_mongo_connected():
-        print("⚠️ MongoDB에 연결되어 있지 않아 디버그 정보를 확인할 수 없습니다")
-        return
-    
-    try:
-        print("\n==== MongoDB 디버그 정보 ====")
-        
-        # 데이터베이스 정보
-        print(f"데이터베이스 이름: {db.name}")
-        print(f"사용 가능한 컬렉션: {db.list_collection_names()}")
-        
-        # 컬렉션 통계
-        collections = {
-            "roles": roles_collection,
-            "excluded_roles": excluded_roles_collection, 
-            "chat_counts": chat_counts_collection,
-            "messages": messages_collection,
-            "aggregate_dates": aggregate_dates_collection,
-            "role_streaks": role_streaks_collection,
-            "auth_codes": auth_codes_collection,
-            "authorized_guilds": authorized_guilds_collection
         }
         
-        print("\n컬렉션 문서 수:")
-        for name, collection in collections.items():
-            count = collection.count_documents({})
-            print(f"  {name}: {count}개 문서")
+        result = aggregate_history_collection.insert_one(document)
+        print(f"✅ 집계 기록 저장 완료: 길드 {guild_id}, ID: {result.inserted_id}")
+        return result.inserted_id
         
-        # 각 컬렉션의 샘플 데이터(있는 경우)
-        print("\n샘플 데이터:")
-        for name, collection in collections.items():
-            sample = collection.find_one()
-            if sample:
-                # ObjectId를 문자열로 변환하여 표시
-                if "_id" in sample:
-                    sample["_id"] = str(sample["_id"])
-                print(f"  {name}: {sample}")
-            else:
-                print(f"  {name}: 데이터 없음")
-        
-        print("\n=============================")
     except Exception as e:
-        print(f"MongoDB 디버그 중 오류 발생: {e}")
+        print(f"⚠️ 집계 기록 저장 중 오류 발생: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+# 집계 기록 조회 함수
+def get_aggregate_history(guild_id, limit=10, skip=0):
+    """특정 서버의 집계 기록을 최신순으로 조회합니다"""
+    if not is_mongo_connected():
+        print(f"⚠️ MongoDB에 연결되지 않아 집계 기록을 조회할 수 없습니다 (길드: {guild_id})")
+        return []
+        
+    try:
+        cursor = aggregate_history_collection.find(
+            {"guild_id": guild_id}
+        ).sort(
+            "aggregate_date", -1  # 최신순 정렬
+        ).skip(skip).limit(limit)
+        
+        return list(cursor)
+        
+    except Exception as e:
+        print(f"⚠️ 집계 기록 조회 중 오류 발생: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+
+# 특정 집계 기록 조회 함수
+def get_aggregate_record(record_id):
+    """특정 ID의 집계 기록을 조회합니다"""
+    if not is_mongo_connected():
+        print(f"⚠️ MongoDB에 연결되지 않아 집계 기록을 조회할 수 없습니다")
+        return None
+        
+    try:
+        from bson.objectid import ObjectId
+        record = aggregate_history_collection.find_one({"_id": ObjectId(record_id)})
+        return record
+        
+    except Exception as e:
+        print(f"⚠️ 집계 기록 조회 중 오류 발생: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+    try:
+        # 기존 데이터 삭제
+        delete_result = excluded_roles_collection.delete_many({"guild_id": guild_id})
+        
+        # 새 데이터 저장
+        if excluded_roles:
+            documents = [
+                {"guild_id": guild_id, "role_id": role_id, "updated_at": datetime.now(timezone.utc)}
+                for role_id in excluded_roles
+            ]
+            insert_result = excluded_roles_collection.insert_many(documents)
+            print(f"제외 역할 저장 완료: 길드 {guild_id}, {len(excluded_roles)}개 역할, 삭제: {delete_result.deleted_count}개, 삽입: {len(insert_result.inserted_ids)}개")
+        else:
+            print(f"제외 역할 초기화: 길드 {guild_id}, 삭제: {delete_result.deleted_count}개")
+    except Exception as e:
+        print(f"⚠️ 제외 역할 저장 중 오류 발생: {e}")
         import traceback
         traceback.print_exc()

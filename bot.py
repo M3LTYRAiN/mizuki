@@ -566,6 +566,7 @@ async def process_text_aggregate_command(message):
             import pytz  # 이 줄도 추가하면 더 안전함
             kst = pytz.timezone('Asia/Seoul')
             now = datetime.now(kst)
+            now_utc = datetime.now(pytz.UTC)  # UTC 시간 추가
             
             # 이미지 생성 (aggregate.py의 함수 호출)
             try:
@@ -600,6 +601,21 @@ async def process_text_aggregate_command(message):
                 # 마지막 집계 시간 저장
                 save_last_aggregate_date(guild_id)
                 
+                # ===== 집계 기록 저장 코드 추가 =====
+                try:
+                    # 집계 기록 저장 (텍스트 명령어는 현재 리더보드 데이터를 기준으로 집계)
+                    db.save_aggregate_history(
+                        guild_id=guild_id,
+                        aggregate_date=now_utc,
+                        start_date=now_utc,  # !집계는 특정 기간이 없으므로 현재 시간으로
+                        end_date=now_utc,    # !집계는 특정 기간이 없으므로 현재 시간으로
+                        top_chatters=top_chatters
+                    )
+                    print(f"[!집계] 서버 {guild_id}의 집계 기록 저장 성공")
+                except Exception as history_error:
+                    print(f"[!집계] 집계 기록 저장 중 오류 발생: {history_error}")
+                    import traceback
+                    traceback.print_exc()
             else:
                 await progress_msg.edit(content="❌ 이미지 생성에 실패한 것이다... (E016)")
                 
