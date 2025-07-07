@@ -123,6 +123,17 @@ async def 집계(inter: disnake.ApplicationCommandInteraction, start_date: str, 
             await inter.edit_original_response(content="❌ 설정된 역할을 찾을 수 없는 것이다.")
             return
 
+        # 순위권 사용자 목록 (ID만 추출)
+        top_user_ids = [user_id for user_id, _ in top_chatters]
+        
+        # 새로운 부분: 기존에 역할이 있었지만 이번에 순위권에서 벗어난 사용자들의 연속 기록 초기화
+        for member in inter.guild.members:
+            if (first_role in member.roles or other_role in member.roles) and member.id not in top_user_ids:
+                # 순위권 밖으로 떨어진 사용자의 연속 기록 초기화
+                from bot import reset_user_role_streak
+                reset_user_role_streak(guild_id, member.id)
+                print(f"[집계] 사용자 {member.id}({member.display_name})의 연속 기록 초기화 (순위권 제외)")
+
         # 기존 역할 제거
         for member in inter.guild.members:
             if first_role in member.roles or other_role in member.roles:

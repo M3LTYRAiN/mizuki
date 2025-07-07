@@ -508,6 +508,16 @@ async def process_text_aggregate_command(message):
             top_chatters = [(user_id, count) for user_id, count in chat_counts.most_common()
                           if user_id not in excluded_members][:6]
                           
+            # 순위권 사용자 목록 (ID만 추출)
+            top_user_ids = [user_id for user_id, _ in top_chatters]
+            
+            # 기존에 역할이 있었지만 이번에 순위권에서 벗어난 사용자들의 연속 기록 초기화
+            for member in message.guild.members:
+                if (first_role in member.roles or other_role in member.roles) and member.id not in top_user_ids:
+                    # 순위권 밖으로 떨어진 사용자의 연속 기록 초기화
+                    reset_user_role_streak(guild_id, member.id)
+                    print(f"[!집계] 사용자 {member.id}({member.display_name})의 연속 기록 초기화 (순위권 제외)")
+                          
             # 아무도 없으면 에러 메시지
             if not top_chatters:
                 await progress_msg.edit(content="❌ 집계할 수 있는 사용자가 없는 것이다. (E008)")
@@ -652,6 +662,18 @@ import commands.reset_streak
 import commands.omikuji
 import commands.role_color
 import commands.auth
+import commands.manual
+import commands.auth
+import commands.tenor
+import commands.admin_leaderboard
+
+# 봇 실행
+if TOKEN:
+    masked_token = TOKEN[:4] + '*' * (len(TOKEN) - 8) + TOKEN[-4:]
+    print(f"토큰 로드 성공: {masked_token}")
+    bot.run(TOKEN)
+else:
+    print("❌ 토큰을 찾을 수 없는 것이다! .env 파일을 확인하는 것이다!")
 import commands.manual
 import commands.tenor
 import commands.admin_leaderboard

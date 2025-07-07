@@ -498,3 +498,19 @@ def get_aggregate_record(record_id):
         print(f"⚠️ 제외 역할 저장 중 오류 발생: {e}")
         import traceback
         traceback.print_exc()
+
+# 기존 코드 뒤에 추가
+def reset_user_role_streak(guild_id, user_id):
+    """특정 사용자의 역할 연속 기록을 0으로 초기화합니다"""
+    if not is_mongo_connected():
+        return False
+
+    result = role_streaks_collection.update_one(
+        {"guild_id": guild_id, "user_id": user_id},
+        {"$set": {
+            "streak_count": 0,
+            "updated_at": datetime.now(timezone.utc)
+        }}
+    )
+
+    return result.modified_count > 0
