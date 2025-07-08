@@ -437,6 +437,10 @@ async def on_message(message):
     else:
         print("⚠️ MongoDB에 연결되지 않아 데이터를 저장할 수 없습니다")
 
+    # 메시지 보낸 사용자의 정보 업데이트 (봇이 아닐 경우)
+    if not message.author.bot and db.is_mongo_connected():
+        db.save_user_data(message.author, guild_id)
+
 # !집계 명령어를 처리하는 함수 수정
 async def process_text_aggregate_command(message):
     """텍스트 명령어 !집계를 처리합니다. 현재 리더보드에 있는 채팅 데이터를 기준으로 집계합니다."""
@@ -646,7 +650,7 @@ async def process_text_aggregate_command(message):
 async def on_slash_command_error(inter, error):
     import traceback
     print(f"명령어 오류 발생 ({inter.data.name}): {error}")
-    traceback.print.exc()
+    traceback.print_exc()
 
 # 봇 실행 (환경 변수에서 토큰 가져오기)
 TOKEN = os.getenv('DISCORD_TOKEN')
@@ -662,18 +666,6 @@ import commands.reset_streak
 import commands.omikuji
 import commands.role_color
 import commands.auth
-import commands.manual
-import commands.auth
-import commands.tenor
-import commands.admin_leaderboard
-
-# 봇 실행
-if TOKEN:
-    masked_token = TOKEN[:4] + '*' * (len(TOKEN) - 8) + TOKEN[-4:]
-    print(f"토큰 로드 성공: {masked_token}")
-    bot.run(TOKEN)
-else:
-    print("❌ 토큰을 찾을 수 없는 것이다! .env 파일을 확인하는 것이다!")
 import commands.manual
 import commands.tenor
 import commands.admin_leaderboard
