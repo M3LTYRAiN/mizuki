@@ -183,15 +183,18 @@ async def 집계(inter: disnake.ApplicationCommandInteraction, start_date: str, 
             now_utc = datetime.datetime.now(pytz.UTC)
             save_last_aggregate_date(guild_id)
             
-            # ===== 여기에 집계 기록 저장 코드 추가 =====
+            # 집계 기록 저장 (역할 이름/색상 포함)
             try:
-                # 집계 기록 저장
                 db.save_aggregate_history(
                     guild_id=guild_id,
                     aggregate_date=now_utc,
                     start_date=start_date_utc,
                     end_date=end_date_utc,
-                    top_chatters=top_chatters
+                    top_chatters=top_chatters,
+                    first_role_name=first_role.name,
+                    first_role_color=f"#{first_role.color.value:06x}",
+                    other_role_name=other_role.name,
+                    other_role_color=f"#{other_role.color.value:06x}"
                 )
                 print(f"[집계] 서버 {guild_id}의 집계 기록 저장 성공")
             except Exception as history_error:

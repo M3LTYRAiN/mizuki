@@ -623,7 +623,11 @@ async def process_text_aggregate_command(message):
                         aggregate_date=now_utc,
                         start_date=now_utc,  # !집계는 특정 기간이 없으므로 현재 시간으로
                         end_date=now_utc,    # !집계는 특정 기간이 없으므로 현재 시간으로
-                        top_chatters=top_chatters
+                        top_chatters=top_chatters,
+                        first_role_name=first_role.name,
+                        first_role_color=f"#{first_role.color.value:06x}",
+                        other_role_name=other_role.name,
+                        other_role_color=f"#{other_role.color.value:06x}"
                     )
                     print(f"[!집계] 서버 {guild_id}의 집계 기록 저장 성공")
                 except Exception as history_error:
@@ -650,7 +654,7 @@ async def process_text_aggregate_command(message):
 async def on_slash_command_error(inter, error):
     import traceback
     print(f"명령어 오류 발생 ({inter.data.name}): {error}")
-    traceback.print_exc()
+    traceback.print.exc()
 
 # 봇 실행 (환경 변수에서 토큰 가져오기)
 TOKEN = os.getenv('DISCORD_TOKEN')
