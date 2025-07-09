@@ -115,20 +115,6 @@ def get_messages_in_period(guild_id, start_date, end_date):
 
     return db.get_messages_in_period(guild_id, start_date, end_date)
 
-# 오래된 메시지 삭제 (MongoDB 기반)
-@tasks.loop(hours=24)
-async def delete_old_messages():
-    """30일 이상 된 메시지를 삭제합니다."""
-    if not db.is_mongo_connected():
-        print("⚠️ MongoDB 연결 실패: 오래된 메시지를 삭제할 수 없습니다")
-        return
-
-    from datetime import timedelta
-    cutoff_date = datetime.now(db.timezone.utc) - timedelta(days=30)
-
-    result = db.messages_collection.delete_many({"timestamp": {"$lt": cutoff_date}})
-    print(f"[MongoDB] {result.deleted_count}개의 오래된 메시지 삭제 완료")
-
 @bot.event
 async def on_ready():
     global server_roles, server_chat_counts, server_excluded_roles
@@ -259,8 +245,6 @@ async def on_ready():
         print(f"제외 역할 서버: {len(server_excluded_roles)}개")
         print(f"채팅 카운트 서버: {len(server_chat_counts)}개")
         print("=========================\n")
-
-        delete_old_messages.start()
 
     except Exception as e:
         print(f"Error in on_ready: {e}")
