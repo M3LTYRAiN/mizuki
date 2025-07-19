@@ -589,7 +589,7 @@ async def list_command(message):
             embed = disnake.Embed(
                 title="🔐 인증 관리 패널",
                 description=f"**{message.author.mention}님만 조작할 수 있는 패널인 것이다**\n다른 사용자는 버튼을 사용할 수 없는 것이다.\n\n"
-                          f"📝 [개인정보 처리방침](https://mofucat.jp/ko/privacy-mizuki)",
+                          f"📝 [개인정보 처리방침](https://www.mofucat.jp/privacy-mizuki)",
                 color=disnake.Color.blue()
             )
             

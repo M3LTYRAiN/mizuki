@@ -8,7 +8,7 @@ from discord import Guild
 from database import guilds_col  # DB에서 불러옴
 
 # 서버 정보 저장 함수
-async def update_guilds(bot):
+def update_guilds(bot):
     bulk_ops = []
 
     for guild in bot.guilds:
@@ -33,8 +33,9 @@ async def update_guilds(bot):
         ))
 
     if bulk_ops:
-        result = guilds_col.bulk_write(bulk_ops)
-        print(f"[Guild Update] {datetime.utcnow()} - Upserted: {result.upserted_count}, Modified: {result.modified_count}")
+        guilds_col.bulk_write(bulk_ops)
+    else:
+        print("[GuildUpdater] No guilds found to update.")
 
 # 스케줄러 설정
 def setup_guild_updater(bot):
