@@ -186,5 +186,5 @@ async def tenor(inter: disnake.ApplicationCommandInteraction, search: str):
     await process_tenor_command(inter, search, is_slash_command=True)
 
 # Cog로 등록
-def setup(bot):
-    bot.add_cog(GifCommand(bot))
+# def setup(bot):
+#     bot.add_cog(GifCommand(bot))

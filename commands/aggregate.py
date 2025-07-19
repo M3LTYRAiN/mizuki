@@ -12,6 +12,7 @@ import math
 from commands.role_color import restore_role_original_color
 import os
 import sys
+import database as db
 
 # 여러 환경에서 작동하는 경로 탐색 로직
 def find_resource_dir():
