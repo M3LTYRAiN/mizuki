@@ -660,7 +660,7 @@ import commands.auth
 import commands.manual
 import commands.tenor
 import commands.admin_leaderboard
-import commands.guild_updater
+import commands.guild_updater  # 반드시 있어야 함
 
 # 봇 실행
 if TOKEN:

@@ -1,34 +1,22 @@
 import disnake
 from disnake.ext import commands
-from datetime import datetime
-from database import guilds_col
-
-def save_guild_info(guild):
-    icon_url = guild.icon.url if guild.icon else None
-    banner_url = guild.banner.url if hasattr(guild, "banner") and guild.banner else None
-
-    result = guilds_col.update_one(
-        {'guild_id': guild.id},
-        {
-            '$set': {
-                'name': guild.name,
-                'member_count': guild.member_count,
-                'icon_url': icon_url,
-                'banner_url': banner_url,
-                'updated_at': datetime.utcnow()
-            },
-            '$setOnInsert': {
-                'created_at': datetime.utcnow()
-            }
-        },
-        upsert=True
-    )
-    return result
+from datetime import datetime, timezone
+from database import save_guild_info
 
 @commands.slash_command(name="갱신", description="이 서버의 정보를 DB에 즉시 업로드하는 것이다.")
 async def 갱신(inter: disnake.ApplicationCommandInteraction):
     guild = inter.guild
-    save_guild_info(guild)
+
+    guild_info = {
+        "guild_id": str(guild.id),
+        "name": guild.name,
+        "member_count": guild.member_count,
+        "icon_url": guild.icon.url if guild.icon else None,
+        "banner_url": guild.banner.url if guild.banner else None,
+        "updated_at": datetime.now(timezone.utc),
+    }
+
+    save_guild_info(guild_info)
 
     embed = disnake.Embed(
         title="서버 정보 갱신 완료!",
