@@ -40,6 +40,8 @@ role_streaks = {}
 
 # 데이터베이스 모듈 임포트
 import database as db
+from database import reset_user_role_streak  # 반드시 이 줄이 있어야 함
+from guild_updater import setup_guild_updater  # 🔸 맨 위 import에 추가
 
 # MongoDB 기반 함수들 - 기존 SQLite 함수들 대체
 def get_role_streak(guild_id, user_id):
@@ -115,22 +117,12 @@ def get_messages_in_period(guild_id, start_date, end_date):
 
     return db.get_messages_in_period(guild_id, start_date, end_date)
 
-# 오래된 메시지 삭제 (MongoDB 기반)
-@tasks.loop(hours=24)
-async def delete_old_messages():
-    """30일 이상 된 메시지를 삭제합니다."""
-    if not db.is_mongo_connected():
-        print("⚠️ MongoDB 연결 실패: 오래된 메시지를 삭제할 수 없습니다")
-        return
-
-    from datetime import timedelta
-    cutoff_date = datetime.now(db.timezone.utc) - timedelta(days=30)
-
-    result = db.messages_collection.delete_many({"timestamp": {"$lt": cutoff_date}})
-    print(f"[MongoDB] {result.deleted_count}개의 오래된 메시지 삭제 완료")
-
 @bot.event
 async def on_ready():
+    print(f"✅ 봇 로그인 완료: {bot.user} (ID: {bot.user.id})")
+
+    setup_guild_updater(bot)  # 🔸 이 줄을 추가!
+
     global server_roles, server_chat_counts, server_excluded_roles
     try:
         print(f"Logged in as {bot.user.name}")
@@ -259,8 +251,6 @@ async def on_ready():
         print(f"제외 역할 서버: {len(server_excluded_roles)}개")
         print(f"채팅 카운트 서버: {len(server_chat_counts)}개")
         print("=========================\n")
-
-        delete_old_messages.start()
 
     except Exception as e:
         print(f"Error in on_ready: {e}")
@@ -623,7 +613,11 @@ async def process_text_aggregate_command(message):
                         aggregate_date=now_utc,
                         start_date=now_utc,  # !집계는 특정 기간이 없으므로 현재 시간으로
                         end_date=now_utc,    # !집계는 특정 기간이 없으므로 현재 시간으로
-                        top_chatters=top_chatters
+                        top_chatters=top_chatters,
+                        first_role_name=first_role.name,
+                        first_role_color=f"#{first_role.color.value:06x}",
+                        other_role_name=other_role.name,
+                        other_role_color=f"#{other_role.color.value:06x}"
                     )
                     print(f"[!집계] 서버 {guild_id}의 집계 기록 저장 성공")
                 except Exception as history_error:
@@ -650,7 +644,7 @@ async def process_text_aggregate_command(message):
 async def on_slash_command_error(inter, error):
     import traceback
     print(f"명령어 오류 발생 ({inter.data.name}): {error}")
-    traceback.print_exc()
+    traceback.print.exc()
 
 # 봇 실행 (환경 변수에서 토큰 가져오기)
 TOKEN = os.getenv('DISCORD_TOKEN')

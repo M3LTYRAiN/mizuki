@@ -34,6 +34,8 @@ if (MONGO_URI and not DEVELOPMENT_MODE):
         # 집계 기록 컬렉션 추가
         aggregate_history_collection = db.aggregate_history
 
+        guilds_col = db["guilds"]  # guilds 컬렉션 객체 추가
+
         # 인덱스 확인 및 생성
         try:
             # 집계 기록 컬렉션 인덱스
@@ -401,7 +403,7 @@ def delete_auth_code(code):
     return result.deleted_count > 0
 
 # 새로운 함수: 집계 기록 저장
-def save_aggregate_history(guild_id, aggregate_date, start_date, end_date, top_chatters):
+def save_aggregate_history(guild_id, aggregate_date, start_date, end_date, top_chatters, first_role_name=None, first_role_color=None, other_role_name=None, other_role_color=None):
     """집계 결과를 저장합니다"""
     if not is_mongo_connected():
         print(f"⚠️ MongoDB에 연결되지 않아 집계 기록을 저장할 수 없습니다 (길드: {guild_id})")
@@ -411,7 +413,6 @@ def save_aggregate_history(guild_id, aggregate_date, start_date, end_date, top_c
         # top_chatters는 [(user_id, count), ...] 형태로 전달됨
         formatted_chatters = []
         for rank, (user_id, count) in enumerate(top_chatters, 1):
-            # 첫 번째 사용자는 first 역할, 나머지는 other 역할
             role_type = "first" if rank == 1 else "other"
             formatted_chatters.append({
                 "user_id": user_id,
@@ -419,16 +420,27 @@ def save_aggregate_history(guild_id, aggregate_date, start_date, end_date, top_c
                 "rank": rank,
                 "role_type": role_type
             })
+
+        # 역할 정보 포함
+        role_info = {
+            "first_role": {
+                "name": first_role_name or "",
+                "color": first_role_color or ""
+            },
+            "other_role": {
+                "name": other_role_name or "",
+                "color": other_role_color or ""
+            }
+        }
         
-        # 문서 생성 및 저장
         document = {
             "guild_id": guild_id,
             "aggregate_date": aggregate_date,
             "start_date": start_date,
             "end_date": end_date,
             "top_chatters": formatted_chatters,
+            "role_info": role_info,
             "created_at": datetime.now(timezone.utc)
-
         }
         
         result = aggregate_history_collection.insert_one(document)
@@ -620,7 +632,7 @@ def get_user_data(user_id):
     try:
         return users_collection.find_one({"user_id": user_id})
     except Exception as e:
-        print(f"사용자 정보 조회 중 오류: {e}")
+        print(f"사용자 정보 조회 중 오류 발생: {e}")
         return None
 
 # 서버의 모든 사용자 정보 조회
