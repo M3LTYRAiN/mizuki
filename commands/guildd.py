@@ -8,12 +8,13 @@ async def 갱신(inter: disnake.ApplicationCommandInteraction):
     guild = inter.guild
 
     guild_info = {
-        "guild_id": str(guild.id),
+        "guild_id": guild.id,  # int로 넘기는 것이 일반적
         "name": guild.name,
         "member_count": guild.member_count,
         "icon_url": guild.icon.url if guild.icon else None,
         "banner_url": guild.banner.url if guild.banner else None,
         "updated_at": datetime.now(timezone.utc),
+        # "created_at"은 최초 생성 시만 필요하므로 생략 가능
     }
 
     save_guild_info(guild_info)
