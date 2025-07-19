@@ -527,147 +527,25 @@ def reset_user_role_streak(guild_id, user_id):
 
     return result.modified_count > 0
 
-# 기존 코드에 추가할 부분
-def setup_user_collection():
-    """사용자 컬렉션 설정 및 인덱스 생성"""
-    if not is_mongo_connected():
-        return
+# 서버 정보 저장/업데이트 함수 (슬래시 명령어에서 사용)
+def save_guild_info(guild):
+    icon_url = guild.icon.url if guild.icon else None
+    banner_url = guild.banner.url if hasattr(guild, "banner") and guild.banner else None
 
-    # 사용자 컬렉션 설정
-    global users_collection
-    users_collection = db.users
-
-    # 인덱스 확인 및 생성
-    try:
-        index_info = users_collection.index_information()
-        
-        # user_id 인덱스 (빠른 조회용)
-        if "user_id_1" not in index_info:
-            users_collection.create_index([("user_id", 1)], unique=True, background=True)
-            print("사용자 컬렉션 기본 인덱스 생성 완료")
-        
-        # 마지막 메시지 날짜 인덱스 (정리용)
-        if "last_seen_-1" not in index_info:
-            users_collection.create_index([("last_seen", -1)], background=True)
-            print("사용자 활동 인덱스 생성 완료")
-            
-        # 서버별 사용자 검색 인덱스
-        if "guilds_1" not in index_info:
-            users_collection.create_index([("guilds", 1)], background=True)
-            print("서버별 사용자 인덱스 생성 완료")
-            
-    except Exception as e:
-        print(f"사용자 컬렉션 인덱스 생성 중 오류: {e}")
-        import traceback
-        traceback.print_exc()
-
-# 사용자 정보 저장/업데이트 함수
-def save_user_data(user, guild_id=None):
-    """사용자 정보를 저장하거나 업데이트합니다"""
-    if not is_mongo_connected():
-        return False
-    
-    try:
-        user_id = user.id
-        
-        # 아바타 정보 처리
-        avatar_hash = user.avatar.key if user.avatar else None
-        avatar_animated = user.avatar.is_animated() if user.avatar else False
-        
-        # 아바타 URL 생성
-        if avatar_hash:
-            ext = "gif" if avatar_animated else "png"
-            avatar_url = f"https://cdn.discordapp.com/avatars/{user_id}/{avatar_hash}.{ext}?size=128"
-        else:
-            # 기본 아바타 (Discord의 기본 아바타 알고리즘)
-            default_avatar_id = (user_id >> 22) % 6
-            avatar_url = f"https://cdn.discordapp.com/embed/avatars/{default_avatar_id}.png"
-        
-        # 현재 시간 (UTC)
-        now = datetime.now(timezone.utc)
-        
-        # 업데이트할 기본 필드
-        update_data = {
-            "username": user.name,
-            "display_name": user.display_name,
-            "avatar_hash": avatar_hash,
-            "avatar_animated": avatar_animated,
-            "avatar_url": avatar_url,
-            "last_seen": now,
-            "updated_at": now
-        }
-        
-        # 서버 ID가 제공된 경우 해당 서버도 추가
-        if guild_id:
-            # 배열 필드에 서버 ID 추가 (중복 방지)
-            users_collection.update_one(
-                {"user_id": user_id},
-                {"$addToSet": {"guilds": guild_id}}
-            )
-        
-        # upsert: 있으면 업데이트, 없으면 생성
-        result = users_collection.update_one(
-            {"user_id": user_id},
-            {
-                "$set": update_data,
-                "$setOnInsert": {"created_at": now}  # 처음 생성 시에만 설정
+    result = guilds_col.update_one(
+        {'guild_id': guild.id},
+        {
+            '$set': {
+                'name': guild.name,
+                'member_count': guild.member_count,
+                'icon_url': icon_url,
+                'banner_url': banner_url,
+                'updated_at': datetime.utcnow()
             },
-            upsert=True
-        )
-        
-        return result.modified_count > 0 or result.upserted_id is not None
-        
-    except Exception as e:
-        print(f"사용자 정보 저장 중 오류 발생: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
-
-# 사용자 정보 조회 함수
-def get_user_data(user_id):
-    """사용자 정보를 조회합니다"""
-    if not is_mongo_connected():
-        return None
-    
-    try:
-        return users_collection.find_one({"user_id": user_id})
-    except Exception as e:
-        print(f"사용자 정보 조회 중 오류 발생: {e}")
-        return None
-
-# 서버의 모든 사용자 정보 조회
-def get_guild_users(guild_id, limit=1000):
-    """특정 서버의 사용자 정보를 조회합니다"""
-    if not is_mongo_connected():
-        return []
-    
-    try:
-        cursor = users_collection.find(
-            {"guilds": guild_id}
-        ).sort("last_seen", -1).limit(limit)
-        
-        return list(cursor)
-    except Exception as e:
-        print(f"서버 사용자 조회 중 오류: {e}")
-        return []
-
-# 사용자 정보 일괄 업데이트 함수
-def bulk_update_users(guild):
-    """서버의 모든 멤버 정보를 일괄 업데이트합니다"""
-    if not is_mongo_connected() or not guild:
-        return 0
-    
-    try:
-        count = 0
-        for member in guild.members:
-            if not member.bot:  # 봇은 제외
-                if save_user_data(member, guild.id):
-                    count += 1
-        
-        print(f"서버 {guild.id} ({guild.name})의 사용자 {count}명 정보 업데이트 완료")
-        return count
-    except Exception as e:
-        print(f"사용자 일괄 업데이트 중 오류: {e}")
-        import traceback
-        traceback.print_exc()
-        return 0
+            '$setOnInsert': {
+                'created_at': datetime.utcnow()
+            }
+        },
+        upsert=True
+    )
+    return result

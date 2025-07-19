@@ -41,7 +41,6 @@ role_streaks = {}
 # 데이터베이스 모듈 임포트
 import database as db
 from database import reset_user_role_streak  # 반드시 이 줄이 있어야 함
-from guild_updater import setup_guild_updater  # 🔸 맨 위 import에 추가
 
 # MongoDB 기반 함수들 - 기존 SQLite 함수들 대체
 def get_role_streak(guild_id, user_id):
@@ -120,8 +119,6 @@ def get_messages_in_period(guild_id, start_date, end_date):
 @bot.event
 async def on_ready():
     print(f"✅ 봇 로그인 완료: {bot.user} (ID: {bot.user.id})")
-
-    setup_guild_updater(bot)  # 🔸 이 줄을 추가!
 
     global server_roles, server_chat_counts, server_excluded_roles
     try:
@@ -663,6 +660,7 @@ import commands.auth
 import commands.manual
 import commands.tenor
 import commands.admin_leaderboard
+import commands.guild_updater
 
 # 봇 실행
 if TOKEN:
