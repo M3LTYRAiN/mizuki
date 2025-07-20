@@ -380,6 +380,21 @@ async def on_message(message):
         await process_text_aggregate_command(message)
         return
 
+    # !갱신 명령어 처리 추가
+    if message.content.strip().lower() == "!갱신":
+        # 관리자 권한 확인 (원하는 경우)
+        # if not message.author.guild_permissions.administrator:
+        #     await message.channel.send("❌ 관리자만 사용할 수 있는 명령어인 것이다.")
+        #     return
+
+        from database import save_guild_info
+        success = save_guild_info(message.guild)
+        if success:
+            await message.channel.send("✅ 서버 정보를 성공적으로 DB에 저장한 것이다!", delete_after=5)
+        else:
+            await message.channel.send("❌ 정보를 저장하지 못한 것이다. 관리자에게 문의하는 것이다!", delete_after=5)
+        return
+
     # 서버 인증 확인
     from commands.auth import is_guild_authorized
     if not is_guild_authorized(message.guild.id):
