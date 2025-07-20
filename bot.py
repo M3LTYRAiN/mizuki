@@ -660,7 +660,6 @@ import commands.auth
 import commands.manual
 import commands.tenor
 import commands.admin_leaderboard
-import commands.guildd  # /갱신 명령어 등록
 
 # 봇 실행
 if TOKEN:
