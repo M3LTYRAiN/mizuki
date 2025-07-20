@@ -539,9 +539,19 @@ def save_guild_info(guild):
       icon_url: str or None,
       banner_url: str or None,
       updated_at: datetime,
-      created_at: datetime (최초 생성 시)
+      created_at: datetime (최초 생성 시),
+      member_ids: [int, ...]  # 채팅 기록이 1회 이상인 사용자 ID 목록
     }
     """
+    # 채팅 기록이 1회 이상인 사용자 ID 목록 추출
+    member_ids = []
+    try:
+        from bot import server_chat_counts
+        chat_counts = server_chat_counts.get(guild.id, {})
+        member_ids = [uid for uid, cnt in chat_counts.items() if cnt > 0]
+    except Exception as e:
+        print(f"[save_guild_info] member_ids 추출 오류: {e}")
+
     result = guilds_col.update_one(
         {'guild_id': guild.id},
         {
@@ -550,7 +560,8 @@ def save_guild_info(guild):
                 'member_count': guild.member_count,
                 'icon_url': guild.icon.url if guild.icon else None,
                 'banner_url': guild.banner.url if hasattr(guild, "banner") and guild.banner else None,
-                'updated_at': datetime.now(timezone.utc)
+                'updated_at': datetime.now(timezone.utc),
+                'member_ids': member_ids
             },
             '$setOnInsert': {
                 'created_at': datetime.now(timezone.utc)
