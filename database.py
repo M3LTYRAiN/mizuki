@@ -528,32 +528,34 @@ def reset_user_role_streak(guild_id, user_id):
     return result.modified_count > 0
 
 # 서버 정보 저장/업데이트 함수 (슬래시 명령어에서 사용)
-def save_guild_info(guild_info):
+def save_guild_info(guild):
     """
-    guild_info: {
-        "guild_id": ...,
-        "name": ...,
-        "member_count": ...,
-        "icon_url": ...,
-        "banner_url": ...,
-        "updated_at": ...,
-        "created_at": ... (optional)
+    guild: disnake.Guild 객체
+    DB 구조:
+    {
+      guild_id: int,
+      name: str,
+      member_count: int,
+      icon_url: str or None,
+      banner_url: str or None,
+      updated_at: datetime,
+      created_at: datetime (최초 생성 시)
     }
     """
     result = guilds_col.update_one(
-        {'guild_id': guild_info["guild_id"]},
+        {'guild_id': guild.id},
         {
             '$set': {
-                'name': guild_info["name"],
-                'member_count': guild_info["member_count"],
-                'icon_url': guild_info["icon_url"],
-                'banner_url': guild_info["banner_url"],
-                'updated_at': guild_info["updated_at"]
+                'name': guild.name,
+                'member_count': guild.member_count,
+                'icon_url': guild.icon.url if guild.icon else None,
+                'banner_url': guild.banner.url if hasattr(guild, "banner") and guild.banner else None,
+                'updated_at': datetime.now(timezone.utc)
             },
             '$setOnInsert': {
-                'created_at': guild_info.get("created_at", datetime.utcnow())
+                'created_at': datetime.now(timezone.utc)
             }
         },
         upsert=True
     )
-    return result
+    return result.modified_count > 0 or result.upserted_id is not None
