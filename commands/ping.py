@@ -1,8 +1,8 @@
 import disnake
-from disnake.ext import commands
+from bot import bot
 from database import save_guild_info
 
-@commands.slash_command(name="갱신", description="이 서버의 정보를 DB에 즉시 업로드하는 것이다.")
+@bot.slash_command(name="갱신", description="이 서버의 정보를 DB에 즉시 업로드하는 것이다.")
 async def 갱신(inter: disnake.ApplicationCommandInteraction):
     await inter.response.defer(with_message=True)
     guild = inter.guild
