@@ -145,7 +145,7 @@ async def on_ready():
         print("============================\n")
 
         check_required_files()
-        game_activity = disnake.Game(name="通りゃんせ　通りゃんせ")
+        game_activity = disnake.Game(name="www.mofucat.jp")
         await bot.change_presence(activity=game_activity)
 
         print("\n==== 봇 초기화 및 데이터 로드 ====")
