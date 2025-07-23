@@ -540,7 +540,7 @@ def save_guild_info(guild):
       banner_url: str or None,
       updated_at: datetime,
       created_at: datetime (최초 생성 시),
-      member_ids: [int, ...]  # 채팅 기록이 1회 이상인 사용자 ID 목록
+      member_ids: [int, ...]  # 채팅 기록이 1회 이상인 사용자 ID 목록 (누적)
     }
     """
     # 채팅 기록이 1회 이상인 사용자 ID 목록 추출
@@ -551,6 +551,15 @@ def save_guild_info(guild):
         member_ids = [uid for uid, cnt in chat_counts.items() if cnt > 0]
     except Exception as e:
         print(f"[save_guild_info] member_ids 추출 오류: {e}")
+
+    # 기존 DB의 member_ids와 합집합 처리
+    try:
+        existing_doc = guilds_col.find_one({'guild_id': guild.id})
+        if existing_doc and "member_ids" in existing_doc:
+            prev_ids = set(existing_doc["member_ids"])
+            member_ids = list(prev_ids.union(member_ids))
+    except Exception as e:
+        print(f"[save_guild_info] 기존 member_ids 합집합 오류: {e}")
 
     result = guilds_col.update_one(
         {'guild_id': guild.id},
