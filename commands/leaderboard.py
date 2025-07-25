@@ -90,15 +90,14 @@ class LeaderboardView(View):
             kst = pytz.timezone('Asia/Seoul')
             last_aggregate_date_kst = last_aggregate_date.astimezone(kst)
             formatted_time = last_aggregate_date_kst.strftime("%Y년 %m월 %d일 %p %I시 %M분 %S초").replace('PM', '오후').replace('AM', '오전')
-            # 하이퍼링크 포함 문구 추가
             embed.set_footer(
-                text=f"마지막 집계: {formatted_time}\n여기서도 확인할 수 있습니다.",
+                text=f"마지막 집계: {formatted_time}",
                 icon_url=None
             )
-            embed.description += "\n\n[여기서](https://www.mofucat.jp)도 확인할 수 있습니다."
+            embed.description += "\n\n[여기서](https://www.mofucat.jp)도 확인할 수 있는 것이다!."
         else:
             embed.set_footer(text="마지막 집계 정보 없음")
-            embed.description += "\n\n[여기서](https://www.mofucat.jp)도 확인할 수 있습니다."
+            embed.description += "\n\n[여기서](https://www.mofucat.jp)도 확인할 수 있는 것이다!."
 
         # 버튼 상태 업데이트 수정
         self.children[0].disabled = self.current_page == 1  # 이전 버튼
